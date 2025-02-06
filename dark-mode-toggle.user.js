@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ☀️Dark Mode Toggle
 // @author       Cervantes Wu (http://www.mriwu.us)
-// @description  Dark mode toggle button with SVG icons, customizable UI, and advanced features.
+// @description  Dark mode toggle button with SVG icons, customizable UI, and advanced features, with per-site preferences.
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      2.1.0
+// @version      2.2.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
@@ -26,6 +26,7 @@
     const RESET_SETTINGS_BUTTON_ID = 'resetSettingsButton'; // ID of the reset settings button
     const SITE_EXCLUSION_INPUT_ID = 'siteExclusionInput'; // ID of the site exclusion input field
     const SITE_EXCLUSION_LIST_ID = 'siteExclusionList'; // ID of the site exclusion list
+    const PER_SITE_SETTINGS_PREFIX = 'perSiteSettings_'; // Prefix for per-site settings in storage
 
     // --- SVG Icons ---
     const moonIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
@@ -108,6 +109,47 @@
         });
     }
 
+     // Get per-site settings from storage
+    async function loadPerSiteSettings() {
+        const siteKey = PER_SITE_SETTINGS_PREFIX + window.location.hostname;
+        try {
+            const storedSettings = await GM.getValue(siteKey, null);
+            if (storedSettings) {
+                // Apply per-site settings
+                settings = { ...settings, ...storedSettings };
+                darkModeEnabled = storedSettings.darkModeEnabled !== undefined ? storedSettings.darkModeEnabled : false;
+                console.log(`Loaded per-site settings for ${window.location.hostname}:`, storedSettings);
+            } else {
+                console.log(`No per-site settings found for ${window.location.hostname}. Using global settings.`);
+            }
+        } catch (error) {
+            console.error(`Failed to load per-site settings for ${window.location.hostname}:`, error);
+        }
+    }
+
+    // Save per-site settings to storage
+    async function savePerSiteSettings() {
+        const siteKey = PER_SITE_SETTINGS_PREFIX + window.location.hostname;
+        const perSiteSettings = {
+            brightness: settings.brightness,
+            contrast: settings.contrast,
+            sepia: settings.sepia,
+            position: settings.position,
+            offsetX: settings.offsetX,
+            offsetY: settings.offsetY,
+            darkModeEnabled: darkModeEnabled,
+            fontFamily: settings.fontFamily,
+            themeColor: settings.themeColor,
+            textColor: settings.textColor
+        };
+        try {
+            await GM.setValue(siteKey, perSiteSettings);
+            console.log(`Saved per-site settings for ${window.location.hostname}:`, perSiteSettings);
+        } catch (error) {
+            console.error(`Failed to save per-site settings for ${window.location.hostname}:`, error);
+        }
+    }
+
     // --- Setting Load/Save/Reset ---
 
     // Load settings from GM storage
@@ -144,6 +186,7 @@
 
     function saveSettings() {
         saveSettingsDebounced();
+        savePerSiteSettings(); // Also save per-site settings
     }
 
 
@@ -165,6 +208,7 @@
             updateButtonState();
             updateExclusionListDisplay();
             toggleDarkMode(false); // Ensure dark mode is disabled.
+             await savePerSiteSettings();
         }
     }
 
@@ -226,6 +270,7 @@
             button.classList.remove('dark');
             console.log('Dark mode disabled.');
         }
+         await savePerSiteSettings();
     }
 
     // Update DarkReader configuration
@@ -361,8 +406,8 @@
         ui.appendChild(uiElements.brightnessInput);
 
         const contrastLabel = document.createElement('label');
-        contrastLabel.textContent = 'Contrast:';
         uiElements.contrastInput = document.createElement('input');
+        contrastLabel.textContent = 'Contrast:';
         uiElements.contrastInput.type = 'number';
         uiElements.contrastInput.id = 'contrastInput';
         uiElements.contrastInput.value = settings.contrast;
@@ -675,7 +720,8 @@
     // --- Initialization ---
 
     async function init() {
-        await loadSettings(); // Load saved settings from storage
+        await loadSettings(); // Load global settings from storage
+         await loadPerSiteSettings(); // Load per-site settings, overwriting global settings if they exist
 
         createToggleButton(); // Create the dark mode toggle button
         createUI(); // Create the settings UI
