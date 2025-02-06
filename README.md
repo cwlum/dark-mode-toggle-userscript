@@ -62,6 +62,22 @@ If you would like to contribute code, please fork the repository and submit a pu
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Author
+## Updates
 
-Cervantes Wu - [http://www.mriwu.us](http://www.mriwu.us)
+**v2.2.0 (Current)**
+
+*   **Per-Site Preferences:**  Added the ability to save and load dark mode settings on a per-website basis.  Your preferred brightness, contrast, button position, and even the dark mode state itself are now remembered for each site you visit!
+*   **Enhanced Settings Persistence:** Settings will persist across different websites automatically.
+*   **Improved UI:** Updated the user interface to have better responsiveness on different devices.
+
+**v2.1.0**
+
+*   **Code Refactoring:** Improved code structure for better maintainability and readability.
+*   **Bug Fixes:** Resolved minor issues with the UI display on certain websites.
+*   **Enhanced documentation:** Added detailed comments for easy understanding.
+
+**v2.0.0**
+
+*   **UI Redesign:** Complete overhaul of the settings user interface, offering more intuitive controls and customization options.
+*   **Site Exclusion List:**  Introduced a feature to exclude specific websites from dark mode.
+*   **Dynamic UI Styling:** The UI theme color, text color, and font family can now be customized.
