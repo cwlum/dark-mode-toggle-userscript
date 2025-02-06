@@ -585,6 +585,9 @@
                 display: none;
                 color: ${textColor};
                 font-family: ${settings.fontFamily};
+                max-width: 90vw; /* 最大寬度為螢幕寬度的 90% */
+                max-height: 80vh; /* 最大高度為螢幕高度的 80% */
+                overflow: auto; /* 超出邊界時顯示滾動條 */
             }
 
             #${UI_ID}.visible {
@@ -603,7 +606,9 @@
                 border: 1px solid #ccc;
                 border-radius: 4px;
                 color: #555;
-                width: 150px;
+                width: 100%; /* 寬度為父元素的 100% */
+                max-width: 150px; /* 但不超過 150px */
+                box-sizing: border-box; /* 包含 padding 和 border */
             }
 
             #${UI_ID} ul#${SITE_EXCLUSION_LIST_ID} {
