@@ -4,6 +4,9 @@
 
 A user script that adds a customizable dark mode toggle button to any website.
 
+<img src=https://github.com/cwlum/dark-mode-toggle-userscript/blob/main/picture.jpeg>
+
+
 ## Features
 
 *   **Easy Dark Mode Toggle:**  Quickly enable or disable dark mode with a single click.
