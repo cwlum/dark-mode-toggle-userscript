@@ -64,7 +64,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Updates
 
-**v2.2.0 (Current)**
+**v2.3.0 (Current)**
+
+*   **Improved Error Handling:** Added visual error messages that display in the UI if loading or saving settings fails. This makes it easier to troubleshoot potential issues.
+*   **Visual Cue for Excluded Sites:** The toggle button now has a distinct visual appearance (dimmed with a dashed red border) when dark mode is enabled, but the *current* site is on the exclusion list.  This makes it immediately clear why dark mode isn't active.
+*   **Chinese UI language:** Translate UI's labels to Chinese
+*   **Settings Persistence:** Settings will persist across different websites automatically.
+*   **Enhanced Settings Persistence:** Settings will persist across different websites automatically.
+*   **Improved UI:** Updated the user interface to have better responsiveness on different devices.
+  
+**v2.2.0**
 
 *   **Per-Site Preferences:**  Added the ability to save and load dark mode settings on a per-website basis.  Your preferred brightness, contrast, button position, and even the dark mode state itself are now remembered for each site you visit!
 *   **Enhanced Settings Persistence:** Settings will persist across different websites automatically.
