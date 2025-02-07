@@ -3,7 +3,7 @@
 // @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Dark mode toggle button with SVG icons, customizable UI, and advanced features, with per-site preferences.
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      2.2.0
+// @version      2.3.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
@@ -20,51 +20,46 @@
     'use strict';
 
     // --- Constants ---
-    const BUTTON_ID = 'darkModeToggle'; // ID of the dark mode toggle button
-    const UI_ID = 'darkModeToggleUI'; // ID of the settings UI
-    const TOGGLE_UI_BUTTON_ID = 'toggleDarkModeUIButton'; // ID of the button that toggles the UI
-    const RESET_SETTINGS_BUTTON_ID = 'resetSettingsButton'; // ID of the reset settings button
-    const SITE_EXCLUSION_INPUT_ID = 'siteExclusionInput'; // ID of the site exclusion input field
-    const SITE_EXCLUSION_LIST_ID = 'siteExclusionList'; // ID of the site exclusion list
-    const PER_SITE_SETTINGS_PREFIX = 'perSiteSettings_'; // Prefix for per-site settings in storage
+    const BUTTON_ID = 'darkModeToggle';
+    const UI_ID = 'darkModeToggleUI';
+    const TOGGLE_UI_BUTTON_ID = 'toggleDarkModeUIButton';
+    const RESET_SETTINGS_BUTTON_ID = 'resetSettingsButton';
+    const SITE_EXCLUSION_INPUT_ID = 'siteExclusionInput';
+    const SITE_EXCLUSION_LIST_ID = 'siteExclusionList';
+    const PER_SITE_SETTINGS_PREFIX = 'perSiteSettings_';
+    const ERROR_MESSAGE_ID = 'darkModeErrorMessage';
 
     // --- SVG Icons ---
     const moonIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
     const sunIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
+    const warningIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 15a2 2 0 0 0-0.38 2.42A2 2 0 0 0 2.18 20H21.82a2 2 0 0 0 2.42-0.38A2 2 0 0 0 22 17.82L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
 
     // --- Default Settings ---
     const defaultSettings = {
-        position: 'bottom-right', // Default position of the toggle button
-        offsetX: 30, // Default horizontal offset of the toggle button
-        offsetY: 30, // Default vertical offset of the toggle button
-        brightness: 100, // Default DarkReader brightness
-        contrast: 90, // Default DarkReader contrast
-        sepia: 10, // Default DarkReader sepia
-        themeColor: '#f7f7f7', // Default UI theme color
-        textColor: '#444', // Default UI text color
-        fontFamily: 'sans-serif', // Default font family for the UI
-        exclusionList: [], // Default list of excluded sites
-        iconMoon: moonIcon, // Default moon icon
-        iconSun: sunIcon, // Default sun icon
-        autoMode: false, // Track auto mode state (not implemented yet)
+        position: 'bottom-right',
+        offsetX: 30,
+        offsetY: 30,
+        brightness: 100,
+        contrast: 90,
+        sepia: 10,
+        themeColor: '#f7f7f7',
+        textColor: '#444',
+        fontFamily: 'sans-serif',
+        exclusionList: [],
+        iconMoon: moonIcon,
+        iconSun: sunIcon,
+        autoMode: false,
     };
 
-    // --- DarkReader Constants (Example) ---
-    const DARKREADER_DEFAULT_BRIGHTNESS = 100; // Example constant for DarkReader brightness
-    const DARKREADER_DEFAULT_CONTRAST = 90; // Example constant for DarkReader contrast
-    const DARKREADER_DEFAULT_SEPIA = 10; // Example constant for DarkReader sepia
-
     // --- Global Variables ---
-    let settings = { ...defaultSettings }; // Current settings, initialized with default values
-    let uiVisible = false; // Whether the settings UI is visible
-    let darkModeEnabled = false; // Whether dark mode is currently enabled
-
-    // --- UI element references (Optimized) ---
-    const uiElements = {}; // Object to store references to UI elements for efficient access
+    let settings = { ...defaultSettings };
+    let uiVisible = false;
+    let darkModeEnabled = false;
+    const uiElements = {};
 
     // --- Helper Functions ---
 
-    // Debounce function to limit the rate at which a function can fire.
+    // Debounce function
     function debounce(func, delay) {
         let timeout;
         return function(...args) {
@@ -79,7 +74,7 @@
         return settings.exclusionList.some(excluded => url.startsWith(excluded));
     }
 
-    // Function to create a button (DRY principle - Don't Repeat Yourself)
+    // Function to create a button
     function createButton(id, text, onClick) {
         const button = document.createElement('button');
         button.id = id;
@@ -88,11 +83,31 @@
         return button;
     }
 
+     // Function to display an error message in the UI
+    function displayErrorMessage(message) {
+        let errorDiv = document.getElementById(ERROR_MESSAGE_ID);
+
+        if (!errorDiv) {
+            errorDiv = document.createElement('div');
+            errorDiv.id = ERROR_MESSAGE_ID;
+            errorDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background-color:red;color:white;text-align:center;padding:10px;z-index:9999;';
+            document.body.appendChild(errorDiv);
+        }
+
+        errorDiv.textContent = message;
+
+        setTimeout(() => {
+            if (errorDiv && errorDiv.parentNode) {
+                document.body.removeChild(errorDiv);
+            }
+        }, 3000);
+    }
+
     // Update the exclusion list display
     function updateExclusionListDisplay() {
-        if (!uiElements.siteExclusionList) return; // Check if the element exists
+        if (!uiElements.siteExclusionList) return;
 
-        uiElements.siteExclusionList.innerHTML = ''; // Clear existing list
+        uiElements.siteExclusionList.innerHTML = '';
 
         settings.exclusionList.forEach(excludedSite => {
             const listItem = document.createElement('li');
@@ -101,7 +116,7 @@
             const removeButton = createButton('removeButton-' + excludedSite, 'Remove', () => {
                 settings.exclusionList = settings.exclusionList.filter(site => site !== excludedSite);
                 saveSettings();
-                updateExclusionListDisplay(); // Refresh display
+                updateExclusionListDisplay();
             });
 
             listItem.appendChild(removeButton);
@@ -109,13 +124,12 @@
         });
     }
 
-     // Get per-site settings from storage
+    // Get per-site settings from storage
     async function loadPerSiteSettings() {
         const siteKey = PER_SITE_SETTINGS_PREFIX + window.location.hostname;
         try {
             const storedSettings = await GM.getValue(siteKey, null);
             if (storedSettings) {
-                // Apply per-site settings
                 settings = { ...settings, ...storedSettings };
                 darkModeEnabled = storedSettings.darkModeEnabled !== undefined ? storedSettings.darkModeEnabled : false;
                 console.log(`Loaded per-site settings for ${window.location.hostname}:`, storedSettings);
@@ -124,6 +138,7 @@
             }
         } catch (error) {
             console.error(`Failed to load per-site settings for ${window.location.hostname}:`, error);
+            displayErrorMessage(`Failed to load per-site settings: ${error}`);
         }
     }
 
@@ -147,6 +162,7 @@
             console.log(`Saved per-site settings for ${window.location.hostname}:`, perSiteSettings);
         } catch (error) {
             console.error(`Failed to save per-site settings for ${window.location.hostname}:`, error);
+            displayErrorMessage(`Failed to save per-site settings: ${error}`);
         }
     }
 
@@ -156,50 +172,47 @@
     async function loadSettings() {
         try {
             const storedSettings = await GM.getValue('settings', defaultSettings);
-            settings = { ...defaultSettings, ...storedSettings }; // Merge stored settings with default settings
+            settings = { ...defaultSettings, ...storedSettings };
             updateButtonPosition();
 
-            // Ensure exclusionList is always an array
             if (!Array.isArray(settings.exclusionList)) {
                 settings.exclusionList = [];
-                saveSettings(); // Save corrected data
+                saveSettings();
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
-            settings = { ...defaultSettings }; // Reset to default settings if loading fails
-            alert('Failed to load settings. Using default settings.');
+            displayErrorMessage('Failed to load settings. Using default settings.');
+            settings = { ...defaultSettings };
         }
     }
 
-    // Save settings to GM storage (Debounced to avoid excessive writes)
+    // Save settings to GM storage
     const saveSettingsDebounced = debounce(async () => {
         try {
             await GM.setValue('settings', settings);
             updateButtonPosition();
             updateDarkReaderConfig();
-            updateExclusionListDisplay(); // Ensure the exclusion list is up-to-date
+            updateExclusionListDisplay();
         } catch (error) {
             console.error('Failed to save settings:', error);
-            alert('Failed to save settings.');
+            displayErrorMessage('Failed to save settings.');
         }
-    }, 500); // 500ms delay -  Save settings only after 500ms of inactivity
+    }, 500);
 
     function saveSettings() {
         saveSettingsDebounced();
-        savePerSiteSettings(); // Also save per-site settings
+        savePerSiteSettings();
     }
-
 
     // Reset settings to default
     async function resetSettings() {
         if (confirm('Are you sure you want to reset settings to default? This will clear ALL settings.')) {
-            // Clear all stored settings
             for (const key in defaultSettings) {
-                await GM.deleteValue(key); // Use GM.deleteValue to clear each setting
+                await GM.deleteValue(key);
             }
 
-            settings = { ...defaultSettings }; // Reset to default settings
-            await GM.setValue('settings', settings); // Store the default settings
+            settings = { ...defaultSettings };
+            await GM.setValue('settings', settings);
             darkModeEnabled = false;
 
             updateButtonPosition();
@@ -207,7 +220,7 @@
             updateUIValues();
             updateButtonState();
             updateExclusionListDisplay();
-            toggleDarkMode(false); // Ensure dark mode is disabled.
+            toggleDarkMode(false);
              await savePerSiteSettings();
         }
     }
@@ -216,7 +229,7 @@
 
     // Update UI element values based on current settings
     function updateUIValues() {
-        if (!uiElements.positionSelect) return; // Check if UI elements are created yet
+        if (!uiElements.positionSelect) return;
 
         uiElements.positionSelect.value = settings.position;
         uiElements.offsetXInput.value = settings.offsetX;
@@ -227,7 +240,7 @@
         uiElements.themeColorInput.value = settings.themeColor;
         uiElements.textColorInput.value = settings.textColor;
         uiElements.fontFamilyInput.value = settings.fontFamily;
-        updateExclusionListDisplay(); // Update the exclusion list in the UI
+        updateExclusionListDisplay();
     }
 
     // Function to update the button's class based on the dark mode state
@@ -237,8 +250,14 @@
 
         if (darkModeEnabled) {
             button.classList.add('dark');
+            if(isSiteExcluded(window.location.href)){
+                button.classList.add('excluded'); // add class when site is excluded
+            } else {
+                button.classList.remove('excluded');
+            }
         } else {
             button.classList.remove('dark');
+            button.classList.remove('excluded');
         }
     }
 
@@ -246,7 +265,6 @@
 
     // Toggle dark mode function (with optional force parameter)
     async function toggleDarkMode(force) {
-        // Use force to explicitly set the state, otherwise toggle it.
         darkModeEnabled = force !== undefined ? force : !darkModeEnabled;
 
         const button = document.getElementById(BUTTON_ID);
@@ -258,11 +276,11 @@
                 button.classList.add('dark');
                 console.log('Dark mode enabled.');
             } else {
-                darkModeEnabled = false;  // Revert the toggle
+                darkModeEnabled = false;
                 button.classList.remove('dark');
                 console.log('Site excluded. Dark mode disabled.');
-                DarkReader.disable();  // Ensure DarkReader is disabled.
-                await GM.setValue('darkMode', false);  // Update the stored value.
+                DarkReader.disable();
+                await GM.setValue('darkMode', false);
             }
         } else {
             DarkReader.disable();
@@ -271,6 +289,7 @@
             console.log('Dark mode disabled.');
         }
          await savePerSiteSettings();
+         updateButtonState(); // Update button state to reflect exclusion
     }
 
     // Update DarkReader configuration
@@ -295,7 +314,7 @@
     function createToggleButton() {
         const button = document.createElement('button');
         button.id = BUTTON_ID;
-        button.innerHTML = `<span class="icon">${moonIcon}</span>`; // Initial icon
+        button.innerHTML = `<span class="icon">${moonIcon}</span>`;
         document.body.appendChild(button);
         button.addEventListener('click', () => {
             toggleDarkMode();
@@ -341,154 +360,124 @@
         const ui = document.createElement('div');
         ui.id = UI_ID;
 
-        // --- Position Settings ---
+        // --- UI Structure ---
+        ui.innerHTML = `
+            <h3>按鈕位置</h3>
+            <label for="positionSelect">位置:</label>
+            <select id="positionSelect">
+                <option value="top-left">左上</option>
+                <option value="top-right">右上</option>
+                <option value="bottom-left">左下</option>
+                <option value="bottom-right">右下</option>
+            </select>
 
-        const positionLabel = document.createElement('label');
-        positionLabel.textContent = 'Position:';
-        uiElements.positionSelect = document.createElement('select');
-        uiElements.positionSelect.id = 'positionSelect';
-        const positions = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-        positions.forEach(pos => {
-            const option = document.createElement('option');
-            option.value = pos;
-            option.textContent = pos;
-            option.selected = settings.position === pos;
-            uiElements.positionSelect.appendChild(option);
-        });
+            <label for="offsetXInput">水平偏移:</label>
+            <input type="number" id="offsetXInput">
+
+            <label for="offsetYInput">垂直偏移:</label>
+            <input type="number" id="offsetYInput">
+
+            <h3>外觀</h3>
+             <label for="themeColorInput">UI 主題顏色:</label>
+            <input type="color" id="themeColorInput">
+
+            <label for="textColorInput">UI 文字顏色:</label>
+            <input type="color" id="textColorInput">
+
+            <label for="fontFamilyInput">字體:</label>
+            <input type="text" id="fontFamilyInput">
+
+            <h3>DarkReader 設定</h3>
+            <label for="brightnessInput">亮度:</label>
+            <input type="number" id="brightnessInput" min="0" max="100">
+
+            <label for="contrastInput">對比度:</label>
+            <input type="number" id="contrastInput" min="0" max="100">
+
+            <label for="sepiaInput">泛黃:</label>
+            <input type="number" id="sepiaInput" min="0" max="100">
+
+            <h3>網站排除</h3>
+            <label for="siteExclusionInput">排除網站:</label>
+            <input type="text" id="siteExclusionInput" placeholder="輸入網址">
+            <button id="addExclusionButton">新增排除</button>
+            <ul id="siteExclusionList"></ul>
+
+            <button id="resetSettingsButton">重置設定</button>
+        `;
+
+        // --- Position Settings ---
+        uiElements.positionSelect = ui.querySelector('#positionSelect');
+        uiElements.offsetXInput = ui.querySelector('#offsetXInput');
+        uiElements.offsetYInput = ui.querySelector('#offsetYInput');
+
+       // --- Theme settings ---
+        uiElements.themeColorInput = ui.querySelector('#themeColorInput');
+        uiElements.textColorInput = ui.querySelector('#textColorInput');
+        uiElements.fontFamilyInput = ui.querySelector('#fontFamilyInput');
+
+        // --- DarkReader Settings ---
+        uiElements.brightnessInput = ui.querySelector('#brightnessInput');
+        uiElements.contrastInput = ui.querySelector('#contrastInput');
+        uiElements.sepiaInput = ui.querySelector('#sepiaInput');
+
+        // --- Site Exclusion ---
+        uiElements.siteExclusionInput = ui.querySelector('#siteExclusionInput');
+        uiElements.siteExclusionList = ui.querySelector('#siteExclusionList');
+
+        // --- Buttons ---
+        const addExclusionButton = ui.querySelector('#addExclusionButton');
+        const resetSettingsButton = ui.querySelector('#resetSettingsButton');
+
+        // --- Event Listeners ---
         uiElements.positionSelect.addEventListener('change', (e) => {
             settings.position = e.target.value;
             saveSettings();
         });
-        ui.appendChild(positionLabel);
-        ui.appendChild(uiElements.positionSelect);
 
-        const offsetXLabel = document.createElement('label');
-        offsetXLabel.textContent = 'Offset X:';
-        uiElements.offsetXInput = document.createElement('input');
-        uiElements.offsetXInput.type = 'number';
-        uiElements.offsetXInput.id = 'offsetXInput';
-        uiElements.offsetXInput.value = settings.offsetX;
         uiElements.offsetXInput.addEventListener('change', (e) => {
             settings.offsetX = parseInt(e.target.value);
             saveSettings();
         });
-        ui.appendChild(offsetXLabel);
-        ui.appendChild(uiElements.offsetXInput);
 
-        const offsetYLabel = document.createElement('label');
-        offsetYLabel.textContent = 'Offset Y:';
-        uiElements.offsetYInput = document.createElement('input');
-        uiElements.offsetYInput.type = 'number';
-        uiElements.offsetYInput.id = 'offsetYInput';
-        uiElements.offsetYInput.value = settings.offsetY;
         uiElements.offsetYInput.addEventListener('change', (e) => {
             settings.offsetY = parseInt(e.target.value);
             saveSettings();
         });
-        ui.appendChild(offsetYLabel);
-        ui.appendChild(uiElements.offsetYInput);
 
-        // --- DarkReader Settings ---
-
-        const brightnessLabel = document.createElement('label');
-        brightnessLabel.textContent = 'Brightness:';
-        uiElements.brightnessInput = document.createElement('input');
-        uiElements.brightnessInput.type = 'number';
-        uiElements.brightnessInput.id = 'brightnessInput';
-        uiElements.brightnessInput.value = settings.brightness;
-        uiElements.brightnessInput.min = 0;
-        uiElements.brightnessInput.max = 100;
-        uiElements.brightnessInput.addEventListener('change', (e) => {
-            settings.brightness = parseInt(e.target.value);
+         uiElements.themeColorInput.addEventListener('change', (e) => {
+            settings.themeColor = e.target.value;
+            applyUIStyles();
             saveSettings();
         });
-        ui.appendChild(brightnessLabel);
-        ui.appendChild(uiElements.brightnessInput);
 
-        const contrastLabel = document.createElement('label');
-        uiElements.contrastInput = document.createElement('input');
-        contrastLabel.textContent = 'Contrast:';
-        uiElements.contrastInput.type = 'number';
-        uiElements.contrastInput.id = 'contrastInput';
-        uiElements.contrastInput.value = settings.contrast;
-        uiElements.contrastInput.min = 0;
-        uiElements.contrastInput.max = 100;
-        uiElements.contrastInput.addEventListener('change', (e) => {
-            settings.contrast = parseInt(e.target.value);
+        uiElements.textColorInput.addEventListener('change', (e) => {
+            settings.textColor = e.target.value;
+            applyUIStyles();
             saveSettings();
         });
-        ui.appendChild(contrastLabel);
-        ui.appendChild(uiElements.contrastInput);
 
-        const sepiaLabel = document.createElement('label');
-        sepiaLabel.textContent = 'Sepia:';
-        uiElements.sepiaInput = document.createElement('input');
-        uiElements.sepiaInput.type = 'number';
-        uiElements.sepiaInput.id = 'sepiaInput';
-        uiElements.sepiaInput.value = settings.sepia;
-        uiElements.sepiaInput.min = 0;
-        uiElements.sepiaInput.max = 100;
-        uiElements.sepiaInput.addEventListener('change', (e) => {
-            settings.sepia = parseInt(e.target.value);
-            saveSettings();
-        });
-        ui.appendChild(sepiaLabel);
-        ui.appendChild(uiElements.sepiaInput);
-
-        // --- Font Settings ---
-        const fontFamilyLabel = document.createElement('label');
-        fontFamilyLabel.textContent = 'Font Family:';
-        uiElements.fontFamilyInput = document.createElement('input');
-        uiElements.fontFamilyInput.type = 'text';
-        uiElements.fontFamilyInput.id = 'fontFamilyInput';
-        uiElements.fontFamilyInput.value = settings.fontFamily;
         uiElements.fontFamilyInput.addEventListener('change', (e) => {
             settings.fontFamily = e.target.value;
             saveSettings();
         });
-        ui.appendChild(fontFamilyLabel);
-        ui.appendChild(uiElements.fontFamilyInput);
 
-        // --- Theme Settings ---
-
-        const themeColorLabel = document.createElement('label');
-        themeColorLabel.textContent = 'UI Theme Color:';
-        uiElements.themeColorInput = document.createElement('input');
-        uiElements.themeColorInput.type = 'color';
-        uiElements.themeColorInput.id = 'themeColorInput';
-        uiElements.themeColorInput.value = settings.themeColor;
-        uiElements.themeColorInput.addEventListener('change', (e) => {
-            settings.themeColor = e.target.value;
-            applyUIStyles(); // Apply the theme immediately
+        uiElements.brightnessInput.addEventListener('change', (e) => {
+            settings.brightness = parseInt(e.target.value);
             saveSettings();
         });
-        ui.appendChild(themeColorLabel);
-        ui.appendChild(uiElements.themeColorInput);
 
-        const textColorLabel = document.createElement('label');
-        textColorLabel.textContent = 'UI Text Color:';
-        uiElements.textColorInput = document.createElement('input');
-        uiElements.textColorInput.type = 'color';
-        uiElements.textColorInput.id = 'textColorInput';
-        uiElements.textColorInput.value = settings.textColor;
-        uiElements.textColorInput.addEventListener('change', (e) => {
-            settings.textColor = e.target.value;
-            applyUIStyles(); // Apply the theme immediately
+        uiElements.contrastInput.addEventListener('change', (e) => {
+            settings.contrast = parseInt(e.target.value);
             saveSettings();
         });
-        ui.appendChild(textColorLabel);
-        ui.appendChild(uiElements.textColorInput);
 
-        // --- Site Exclusion ---
-        const siteExclusionLabel = document.createElement('label');
-        siteExclusionLabel.textContent = 'Exclude Site:';
+        uiElements.sepiaInput.addEventListener('change', (e) => {
+            settings.sepia = parseInt(e.target.value);
+            saveSettings();
+        });
 
-        uiElements.siteExclusionInput = document.createElement('input');
-        uiElements.siteExclusionInput.type = 'text';
-        uiElements.siteExclusionInput.id = SITE_EXCLUSION_INPUT_ID;
-        uiElements.siteExclusionInput.placeholder = 'Enter URL to exclude';
-
-        const addButton = createButton('addExclusionButton', 'Add Exclusion', () => {
+        addExclusionButton.addEventListener('click', () => {
             const url = uiElements.siteExclusionInput.value.trim();
             if (url && !settings.exclusionList.includes(url)) {
                 settings.exclusionList.push(url);
@@ -498,18 +487,7 @@
             }
         });
 
-        uiElements.siteExclusionList = document.createElement('ul');
-        uiElements.siteExclusionList.id = SITE_EXCLUSION_LIST_ID;
-
-        ui.appendChild(siteExclusionLabel);
-        ui.appendChild(uiElements.siteExclusionInput);
-        ui.appendChild(addButton);
-        ui.appendChild(uiElements.siteExclusionList);
-
-        // --- Reset Settings Button ---
-
-        const resetSettingsButton = createButton(RESET_SETTINGS_BUTTON_ID, 'Reset Settings', resetSettings);
-        ui.appendChild(resetSettingsButton);
+        resetSettingsButton.addEventListener('click', resetSettings);
 
         document.body.appendChild(ui);
     }
@@ -541,12 +519,10 @@
             ui.style.color = settings.textColor;
             ui.style.fontFamily = settings.fontFamily;
         }
-
-        // Re-apply the main styles to update the theme.  This is a bit hacky, but works.
-        GM.addStyle(generateStyles());
+        GM.addStyle(generateStyles()); // Re-apply main styles to update theme.
     }
 
-    // --- Styling ---
+     // --- Styling ---
 
     function generateStyles() {
         const { themeColor, textColor, iconMoon, iconSun } = settings;
@@ -616,6 +592,12 @@
                 background-color: #fff;
             }
 
+             /* Add a visual cue for excluded sites */
+            #${BUTTON_ID}.dark.excluded {
+                opacity: 0.5; /* Dim the button */
+                border: 2px dashed red; /* Add a red dashed border */
+            }
+
             /* UI Styles */
             #${UI_ID} {
                 position: fixed;
@@ -630,9 +612,9 @@
                 display: none;
                 color: ${textColor};
                 font-family: ${settings.fontFamily};
-                max-width: 90vw; /* 最大寬度為螢幕寬度的 90% */
-                max-height: 80vh; /* 最大高度為螢幕高度的 80% */
-                overflow: auto; /* 超出邊界時顯示滾動條 */
+                max-width: 90vw;
+                max-height: 80vh;
+                overflow: auto;
             }
 
             #${UI_ID}.visible {
@@ -651,9 +633,9 @@
                 border: 1px solid #ccc;
                 border-radius: 4px;
                 color: #555;
-                width: 100%; /* 寬度為父元素的 100% */
-                max-width: 150px; /* 但不超過 150px */
-                box-sizing: border-box; /* 包含 padding 和 border */
+                width: 100%;
+                max-width: 150px;
+                box-sizing: border-box;
             }
 
             #${UI_ID} ul#${SITE_EXCLUSION_LIST_ID} {
@@ -720,28 +702,26 @@
     // --- Initialization ---
 
     async function init() {
-        await loadSettings(); // Load global settings from storage
-         await loadPerSiteSettings(); // Load per-site settings, overwriting global settings if they exist
+        await loadSettings();
+         await loadPerSiteSettings();
 
-        createToggleButton(); // Create the dark mode toggle button
-        createUI(); // Create the settings UI
-        createToggleUIButton(); // Create the button to toggle the UI
+        createToggleButton();
+        createUI();
+        createToggleUIButton();
 
-        updateUIValues(); // Update the UI elements with the loaded settings
-        applyUIStyles(); // Apply UI styles based on the loaded settings
+        updateUIValues();
+        applyUIStyles();
 
-        // Initial dark mode state based on stored preference
-        darkModeEnabled = await GM.getValue('darkMode', false); // Get stored state
+        darkModeEnabled = await GM.getValue('darkMode', false);
         if (darkModeEnabled && !isSiteExcluded(window.location.href)) {
-            toggleDarkMode(true); // Force enable if stored as true
+            toggleDarkMode(true);
         } else {
-            toggleDarkMode(false); // Force disable if stored as false or site is excluded.
+            toggleDarkMode(false);
         }
-        updateButtonState(); // Reflect initial state in the button's appearance.
+        updateButtonState();
     }
 
     // --- DOM Mutation Observer ---
-    // This observer monitors the document body for changes. If the toggle button or UI is removed from the DOM, it recreates them.
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.type === 'childList') {
@@ -775,6 +755,6 @@
         subtree: true
     });
 
-    init(); // Initialize the script
+    init();
 
 })();
