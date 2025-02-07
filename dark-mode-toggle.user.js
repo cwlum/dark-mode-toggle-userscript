@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☀️Dark Mode Toggle
 // @author       Cervantes Wu (http://www.mriwu.us)
-// @description  Dark mode toggle button with SVG icons, customizable UI, and advanced features, with per-site preferences.
+// @description  Dark mode toggle button with SVG icons, customizable UI, and advanced features, with per-site preferences. Optimized for user experience and responsiveness.
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
 // @version      2.3.0
 // @match        *://*/*
@@ -27,12 +27,10 @@
     const SITE_EXCLUSION_INPUT_ID = 'siteExclusionInput';
     const SITE_EXCLUSION_LIST_ID = 'siteExclusionList';
     const PER_SITE_SETTINGS_PREFIX = 'perSiteSettings_';
-    const ERROR_MESSAGE_ID = 'darkModeErrorMessage';
 
     // --- SVG Icons ---
     const moonIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
     const sunIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
-    const warningIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 15a2 2 0 0 0-0.38 2.42A2 2 0 0 0 2.18 20H21.82a2 2 0 0 0 2.42-0.38A2 2 0 0 0 22 17.82L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
 
     // --- Default Settings ---
     const defaultSettings = {
@@ -55,6 +53,8 @@
     let settings = { ...defaultSettings };
     let uiVisible = false;
     let darkModeEnabled = false;
+
+    // --- UI element references ---
     const uiElements = {};
 
     // --- Helper Functions ---
@@ -81,26 +81,6 @@
         button.textContent = text;
         button.addEventListener('click', onClick);
         return button;
-    }
-
-     // Function to display an error message in the UI
-    function displayErrorMessage(message) {
-        let errorDiv = document.getElementById(ERROR_MESSAGE_ID);
-
-        if (!errorDiv) {
-            errorDiv = document.createElement('div');
-            errorDiv.id = ERROR_MESSAGE_ID;
-            errorDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background-color:red;color:white;text-align:center;padding:10px;z-index:9999;';
-            document.body.appendChild(errorDiv);
-        }
-
-        errorDiv.textContent = message;
-
-        setTimeout(() => {
-            if (errorDiv && errorDiv.parentNode) {
-                document.body.removeChild(errorDiv);
-            }
-        }, 3000);
     }
 
     // Update the exclusion list display
@@ -138,7 +118,6 @@
             }
         } catch (error) {
             console.error(`Failed to load per-site settings for ${window.location.hostname}:`, error);
-            displayErrorMessage(`Failed to load per-site settings: ${error}`);
         }
     }
 
@@ -162,7 +141,6 @@
             console.log(`Saved per-site settings for ${window.location.hostname}:`, perSiteSettings);
         } catch (error) {
             console.error(`Failed to save per-site settings for ${window.location.hostname}:`, error);
-            displayErrorMessage(`Failed to save per-site settings: ${error}`);
         }
     }
 
@@ -181,12 +159,12 @@
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
-            displayErrorMessage('Failed to load settings. Using default settings.');
             settings = { ...defaultSettings };
+            console.warn('Using default settings due to load failure.'); // Changed alert to console.warn
         }
     }
 
-    // Save settings to GM storage
+    // Save settings to GM storage (Debounced)
     const saveSettingsDebounced = debounce(async () => {
         try {
             await GM.setValue('settings', settings);
@@ -195,9 +173,9 @@
             updateExclusionListDisplay();
         } catch (error) {
             console.error('Failed to save settings:', error);
-            displayErrorMessage('Failed to save settings.');
+            console.error('Settings not saved. Check console for errors.'); // Changed alert to console.error
         }
-    }, 500);
+    }, 300); // Reduced delay to 300ms
 
     function saveSettings() {
         saveSettingsDebounced();
@@ -207,21 +185,27 @@
     // Reset settings to default
     async function resetSettings() {
         if (confirm('Are you sure you want to reset settings to default? This will clear ALL settings.')) {
-            for (const key in defaultSettings) {
-                await GM.deleteValue(key);
+            try { // Added try-catch for error handling
+                for (const key in defaultSettings) {
+                    await GM.deleteValue(key);
+                }
+
+                settings = { ...defaultSettings };
+                await GM.setValue('settings', settings);
+                darkModeEnabled = false;
+
+                updateButtonPosition();
+                updateDarkReaderConfig();
+                updateUIValues();
+                updateButtonState();
+                updateExclusionListDisplay();
+                toggleDarkMode(false);
+                await savePerSiteSettings();
+
+            } catch (error) {
+                console.error("Error during reset:", error);
+                alert("An error occurred during settings reset. Please check the console.");
             }
-
-            settings = { ...defaultSettings };
-            await GM.setValue('settings', settings);
-            darkModeEnabled = false;
-
-            updateButtonPosition();
-            updateDarkReaderConfig();
-            updateUIValues();
-            updateButtonState();
-            updateExclusionListDisplay();
-            toggleDarkMode(false);
-             await savePerSiteSettings();
         }
     }
 
@@ -250,14 +234,10 @@
 
         if (darkModeEnabled) {
             button.classList.add('dark');
-            if(isSiteExcluded(window.location.href)){
-                button.classList.add('excluded'); // add class when site is excluded
-            } else {
-                button.classList.remove('excluded');
-            }
+            button.setAttribute('aria-label', 'Disable Dark Mode'); // Accessibility
         } else {
             button.classList.remove('dark');
-            button.classList.remove('excluded');
+            button.setAttribute('aria-label', 'Enable Dark Mode'); // Accessibility
         }
     }
 
@@ -288,8 +268,7 @@
             button.classList.remove('dark');
             console.log('Dark mode disabled.');
         }
-         await savePerSiteSettings();
-         updateButtonState(); // Update button state to reflect exclusion
+        await savePerSiteSettings();
     }
 
     // Update DarkReader configuration
@@ -314,7 +293,8 @@
     function createToggleButton() {
         const button = document.createElement('button');
         button.id = BUTTON_ID;
-        button.innerHTML = `<span class="icon">${moonIcon}</span>`;
+        button.innerHTML = `<span class="icon">${moonIcon}</span>`; // Initial icon
+        button.setAttribute('aria-label', 'Toggle Dark Mode'); // Accessibility
         document.body.appendChild(button);
         button.addEventListener('click', () => {
             toggleDarkMode();
@@ -333,6 +313,7 @@
         button.style.top = '';
         button.style.left = '';
         button.style.right = '';
+        button.style.transition = 'all 0.3s ease'; // Add transition for smoother position changes
 
         switch (position) {
             case 'top-left':
@@ -359,125 +340,166 @@
     function createUI() {
         const ui = document.createElement('div');
         ui.id = UI_ID;
-
-        // --- UI Structure ---
-        ui.innerHTML = `
-            <h3>按鈕位置</h3>
-            <label for="positionSelect">位置:</label>
-            <select id="positionSelect">
-                <option value="top-left">左上</option>
-                <option value="top-right">右上</option>
-                <option value="bottom-left">左下</option>
-                <option value="bottom-right">右下</option>
-            </select>
-
-            <label for="offsetXInput">水平偏移:</label>
-            <input type="number" id="offsetXInput">
-
-            <label for="offsetYInput">垂直偏移:</label>
-            <input type="number" id="offsetYInput">
-
-            <h3>外觀</h3>
-             <label for="themeColorInput">UI 主題顏色:</label>
-            <input type="color" id="themeColorInput">
-
-            <label for="textColorInput">UI 文字顏色:</label>
-            <input type="color" id="textColorInput">
-
-            <label for="fontFamilyInput">字體:</label>
-            <input type="text" id="fontFamilyInput">
-
-            <h3>DarkReader 設定</h3>
-            <label for="brightnessInput">亮度:</label>
-            <input type="number" id="brightnessInput" min="0" max="100">
-
-            <label for="contrastInput">對比度:</label>
-            <input type="number" id="contrastInput" min="0" max="100">
-
-            <label for="sepiaInput">泛黃:</label>
-            <input type="number" id="sepiaInput" min="0" max="100">
-
-            <h3>網站排除</h3>
-            <label for="siteExclusionInput">排除網站:</label>
-            <input type="text" id="siteExclusionInput" placeholder="輸入網址">
-            <button id="addExclusionButton">新增排除</button>
-            <ul id="siteExclusionList"></ul>
-
-            <button id="resetSettingsButton">重置設定</button>
-        `;
+        ui.setAttribute('aria-label', 'Dark Mode Settings');  // Accessibility
 
         // --- Position Settings ---
-        uiElements.positionSelect = ui.querySelector('#positionSelect');
-        uiElements.offsetXInput = ui.querySelector('#offsetXInput');
-        uiElements.offsetYInput = ui.querySelector('#offsetYInput');
 
-       // --- Theme settings ---
-        uiElements.themeColorInput = ui.querySelector('#themeColorInput');
-        uiElements.textColorInput = ui.querySelector('#textColorInput');
-        uiElements.fontFamilyInput = ui.querySelector('#fontFamilyInput');
-
-        // --- DarkReader Settings ---
-        uiElements.brightnessInput = ui.querySelector('#brightnessInput');
-        uiElements.contrastInput = ui.querySelector('#contrastInput');
-        uiElements.sepiaInput = ui.querySelector('#sepiaInput');
-
-        // --- Site Exclusion ---
-        uiElements.siteExclusionInput = ui.querySelector('#siteExclusionInput');
-        uiElements.siteExclusionList = ui.querySelector('#siteExclusionList');
-
-        // --- Buttons ---
-        const addExclusionButton = ui.querySelector('#addExclusionButton');
-        const resetSettingsButton = ui.querySelector('#resetSettingsButton');
-
-        // --- Event Listeners ---
+        const positionLabel = document.createElement('label');
+        positionLabel.textContent = 'Position:';
+        uiElements.positionSelect = document.createElement('select');
+        uiElements.positionSelect.id = 'positionSelect';
+        uiElements.positionSelect.setAttribute('aria-label', 'Button Position');  // Accessibility
+        const positions = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+        positions.forEach(pos => {
+            const option = document.createElement('option');
+            option.value = pos;
+            option.textContent = pos;
+            option.selected = settings.position === pos;
+            uiElements.positionSelect.appendChild(option);
+        });
         uiElements.positionSelect.addEventListener('change', (e) => {
             settings.position = e.target.value;
             saveSettings();
         });
+        ui.appendChild(positionLabel);
+        ui.appendChild(uiElements.positionSelect);
 
+        const offsetXLabel = document.createElement('label');
+        offsetXLabel.textContent = 'Offset X:';
+        uiElements.offsetXInput = document.createElement('input');
+        uiElements.offsetXInput.type = 'number';
+        uiElements.offsetXInput.id = 'offsetXInput';
+        uiElements.offsetXInput.setAttribute('aria-label', 'Horizontal Offset');  // Accessibility
+        uiElements.offsetXInput.value = settings.offsetX;
         uiElements.offsetXInput.addEventListener('change', (e) => {
             settings.offsetX = parseInt(e.target.value);
             saveSettings();
         });
+        ui.appendChild(offsetXLabel);
+        ui.appendChild(uiElements.offsetXInput);
 
+        const offsetYLabel = document.createElement('label');
+        offsetYLabel.textContent = 'Offset Y:';
+        uiElements.offsetYInput = document.createElement('input');
+        uiElements.offsetYInput.type = 'number';
+        uiElements.offsetYInput.id = 'offsetYInput';
+        uiElements.offsetYInput.setAttribute('aria-label', 'Vertical Offset');  // Accessibility
+        uiElements.offsetYInput.value = settings.offsetY;
         uiElements.offsetYInput.addEventListener('change', (e) => {
             settings.offsetY = parseInt(e.target.value);
             saveSettings();
         });
+        ui.appendChild(offsetYLabel);
+        ui.appendChild(uiElements.offsetYInput);
 
-         uiElements.themeColorInput.addEventListener('change', (e) => {
+        // --- DarkReader Settings ---
+
+        const brightnessLabel = document.createElement('label');
+        brightnessLabel.textContent = 'Brightness:';
+        uiElements.brightnessInput = document.createElement('input');
+        uiElements.brightnessInput.type = 'number';
+        uiElements.brightnessInput.id = 'brightnessInput';
+        uiElements.brightnessInput.setAttribute('aria-label', 'Brightness');  // Accessibility
+        uiElements.brightnessInput.value = settings.brightness;
+        uiElements.brightnessInput.min = 0;
+        uiElements.brightnessInput.max = 100;
+        uiElements.brightnessInput.addEventListener('input', (e) => {  // Using 'input' for real-time feedback
+            settings.brightness = parseInt(e.target.value);
+            saveSettings();  // Save settings on every input change
+        });
+        ui.appendChild(brightnessLabel);
+        ui.appendChild(uiElements.brightnessInput);
+
+        const contrastLabel = document.createElement('label');
+        uiElements.contrastInput = document.createElement('input');
+        contrastLabel.textContent = 'Contrast:';
+        uiElements.contrastInput.type = 'number';
+        uiElements.contrastInput.id = 'contrastInput';
+        uiElements.contrastInput.setAttribute('aria-label', 'Contrast');  // Accessibility
+        uiElements.contrastInput.value = settings.contrast;
+        uiElements.contrastInput.min = 0;
+        uiElements.contrastInput.max = 100;
+        uiElements.contrastInput.addEventListener('input', (e) => {  // Using 'input' for real-time feedback
+            settings.contrast = parseInt(e.target.value);
+            saveSettings();  // Save settings on every input change
+        });
+        ui.appendChild(contrastLabel);
+        ui.appendChild(uiElements.contrastInput);
+
+        const sepiaLabel = document.createElement('label');
+        sepiaLabel.textContent = 'Sepia:';
+        uiElements.sepiaInput = document.createElement('input');
+        uiElements.sepiaInput.type = 'number';
+        uiElements.sepiaInput.id = 'sepiaInput';
+        uiElements.sepiaInput.setAttribute('aria-label', 'Sepia');  // Accessibility
+        uiElements.sepiaInput.value = settings.sepia;
+        uiElements.sepiaInput.min = 0;
+        uiElements.sepiaInput.max = 100;
+        uiElements.sepiaInput.addEventListener('input', (e) => {  // Using 'input' for real-time feedback
+            settings.sepia = parseInt(e.target.value);
+            saveSettings();  // Save settings on every input change
+        });
+        ui.appendChild(sepiaLabel);
+        ui.appendChild(uiElements.sepiaInput);
+
+        // --- Font Settings ---
+        const fontFamilyLabel = document.createElement('label');
+        fontFamilyLabel.textContent = 'Font Family:';
+        uiElements.fontFamilyInput = document.createElement('input');
+        uiElements.fontFamilyInput.type = 'text';
+        uiElements.fontFamilyInput.id = 'fontFamilyInput';
+        uiElements.fontFamilyInput.setAttribute('aria-label', 'Font Family');  // Accessibility
+        uiElements.fontFamilyInput.value = settings.fontFamily;
+        uiElements.fontFamilyInput.addEventListener('change', (e) => {
+            settings.fontFamily = e.target.value;
+            saveSettings();
+        });
+        ui.appendChild(fontFamilyLabel);
+        ui.appendChild(uiElements.fontFamilyInput);
+
+        // --- Theme Settings ---
+
+        const themeColorLabel = document.createElement('label');
+        themeColorLabel.textContent = 'UI Theme Color:';
+        uiElements.themeColorInput = document.createElement('input');
+        uiElements.themeColorInput.type = 'color';
+        uiElements.themeColorInput.id = 'themeColorInput';
+        uiElements.themeColorInput.setAttribute('aria-label', 'Theme Color');  // Accessibility
+        uiElements.themeColorInput.value = settings.themeColor;
+        uiElements.themeColorInput.addEventListener('change', (e) => {
             settings.themeColor = e.target.value;
             applyUIStyles();
             saveSettings();
         });
+        ui.appendChild(themeColorLabel);
+        ui.appendChild(uiElements.themeColorInput);
 
+        const textColorLabel = document.createElement('label');
+        textColorLabel.textContent = 'UI Text Color:';
+        uiElements.textColorInput = document.createElement('input');
+        uiElements.textColorInput.type = 'color';
+        uiElements.textColorInput.id = 'textColorInput';
+        uiElements.textColorInput.setAttribute('aria-label', 'Text Color');  // Accessibility
+        uiElements.textColorInput.value = settings.textColor;
         uiElements.textColorInput.addEventListener('change', (e) => {
             settings.textColor = e.target.value;
             applyUIStyles();
             saveSettings();
         });
+        ui.appendChild(textColorLabel);
+        ui.appendChild(uiElements.textColorInput);
 
-        uiElements.fontFamilyInput.addEventListener('change', (e) => {
-            settings.fontFamily = e.target.value;
-            saveSettings();
-        });
+        // --- Site Exclusion ---
+        const siteExclusionLabel = document.createElement('label');
+        siteExclusionLabel.textContent = 'Exclude Site:';
 
-        uiElements.brightnessInput.addEventListener('change', (e) => {
-            settings.brightness = parseInt(e.target.value);
-            saveSettings();
-        });
+        uiElements.siteExclusionInput = document.createElement('input');
+        uiElements.siteExclusionInput.type = 'text';
+        uiElements.siteExclusionInput.id = SITE_EXCLUSION_INPUT_ID;
+        uiElements.siteExclusionInput.setAttribute('aria-label', 'Enter URL to exclude');  // Accessibility
+        uiElements.siteExclusionInput.placeholder = 'Enter URL to exclude';
 
-        uiElements.contrastInput.addEventListener('change', (e) => {
-            settings.contrast = parseInt(e.target.value);
-            saveSettings();
-        });
-
-        uiElements.sepiaInput.addEventListener('change', (e) => {
-            settings.sepia = parseInt(e.target.value);
-            saveSettings();
-        });
-
-        addExclusionButton.addEventListener('click', () => {
+        const addButton = createButton('addExclusionButton', 'Add Exclusion', () => {
             const url = uiElements.siteExclusionInput.value.trim();
             if (url && !settings.exclusionList.includes(url)) {
                 settings.exclusionList.push(url);
@@ -487,7 +509,19 @@
             }
         });
 
-        resetSettingsButton.addEventListener('click', resetSettings);
+        uiElements.siteExclusionList = document.createElement('ul');
+        uiElements.siteExclusionList.id = SITE_EXCLUSION_LIST_ID;
+        uiElements.siteExclusionList.setAttribute('aria-label', 'Excluded Sites');  // Accessibility
+
+        ui.appendChild(siteExclusionLabel);
+        ui.appendChild(uiElements.siteExclusionInput);
+        ui.appendChild(addButton);
+        ui.appendChild(uiElements.siteExclusionList);
+
+        // --- Reset Settings Button ---
+
+        const resetSettingsButton = createButton(RESET_SETTINGS_BUTTON_ID, 'Reset Settings', resetSettings);
+        ui.appendChild(resetSettingsButton);
 
         document.body.appendChild(ui);
     }
@@ -504,8 +538,10 @@
         uiVisible = !uiVisible;
         if (uiVisible) {
             ui.classList.add('visible');
+            ui.setAttribute('aria-hidden', 'false');  // Accessibility
         } else {
             ui.classList.remove('visible');
+            ui.setAttribute('aria-hidden', 'true');   // Accessibility
         }
     }
 
@@ -519,10 +555,11 @@
             ui.style.color = settings.textColor;
             ui.style.fontFamily = settings.fontFamily;
         }
-        GM.addStyle(generateStyles()); // Re-apply main styles to update theme.
+
+        GM.addStyle(generateStyles());
     }
 
-     // --- Styling ---
+    // --- Styling ---
 
     function generateStyles() {
         const { themeColor, textColor, iconMoon, iconSun } = settings;
@@ -590,12 +627,6 @@
                 -webkit-mask-size: cover;
                 mask-size: cover;
                 background-color: #fff;
-            }
-
-             /* Add a visual cue for excluded sites */
-            #${BUTTON_ID}.dark.excluded {
-                opacity: 0.5; /* Dim the button */
-                border: 2px dashed red; /* Add a red dashed border */
             }
 
             /* UI Styles */
@@ -703,7 +734,7 @@
 
     async function init() {
         await loadSettings();
-         await loadPerSiteSettings();
+        await loadPerSiteSettings();
 
         createToggleButton();
         createUI();
@@ -755,6 +786,12 @@
         subtree: true
     });
 
-    init();
+    // --- Lazy Initialization ---
+    // Delay the script initialization until the DOM is fully loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
 })();
