@@ -63,8 +63,20 @@ If you would like to contribute code, please fork the repository and submit a pu
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Updates
+# Changelog
 
-**v2.3.0 (Current)**
+**v2.4.0 (Current)**
+
+* **Performance Optimization:** Improved script performance with optimized DOM operations and debounced functions to reduce resource usage.
+* **Enhanced Settings UI:** Restructured settings panel with clear sections, improved sliders with visual value display, and smoother animations.
+* **Customizable Settings Button:** Added ability to adjust the settings button position through a new offset control.
+* **Improved Site Exclusion:** Added "Add Current Site" button for one-click exclusion of the current website.
+* **Better Visual Feedback:** Real-time value displays for brightness, contrast and sepia settings.
+* **Code Restructuring:** Complete code organization with modular functions and clear section headers for better maintenance.
+* **Enhanced Error Handling:** Improved error reporting and recovery for better stability.
+* **Better Documentation:** Added comprehensive comments throughout the codebase.
+
+**v2.3.0**
 
 *   **Real-time Settings Feedback:**  DarkReader settings (Brightness, Contrast, Sepia) now update in real-time as you adjust them in the UI, providing immediate visual feedback.
 *   **Improved Accessibility:** Added ARIA labels to key UI elements, making the script more accessible to users with screen readers.
