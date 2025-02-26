@@ -1,7 +1,7 @@
 # Dark Mode Toggle User Script
 
-![Version](https://img.shields.io/badge/version-2.4.0-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![Version](https://img.shields.io/badge/version-2.5.0-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
 ![Last Updated](https://img.shields.io/badge/last%20updated-2025--02--26-informational)
 
 A user script that adds a customizable dark mode toggle button to any website.
@@ -12,7 +12,11 @@ A user script that adds a customizable dark mode toggle button to any website.
 *   **Easy Dark Mode Toggle:**  Quickly enable or disable dark mode with a single click.
 *   **Customizable UI:**  Adjust the position, colors, font, and other UI elements to match your preferences.
 *   **DarkReader Integration:**  Leverages DarkReader for advanced dark mode conversion, providing excellent results on most websites.
-*   **Site Exclusion:**  Exclude specific websites where you don't want dark mode to be applied.
+*   **Site Exclusion:**  Exclude specific websites where you don't want dark mode to be applied, with support for wildcards.
+*   **Scheduled Dark Mode:** Set up automatic switching between light and dark modes based on specific times.
+*   **Theme Presets:** Quickly apply predefined themes like High Contrast, Low Contrast, Sepia, and Night Mode.
+*   **Import/Export Settings:** Back up and restore all your preferences and site-specific settings.
+*   **Keyboard Shortcuts:** Toggle dark mode quickly using configurable keyboard shortcuts (default: Alt+Shift+D).
 *   **Persistent Settings:**  Your settings are saved and automatically applied across all websites.
 *   **Lightweight and Efficient:**  Minimal impact on website performance.
 
@@ -27,14 +31,18 @@ A user script that adds a customizable dark mode toggle button to any website.
 After installation, a dark mode toggle button will appear on every website you visit.
 
 *   **Click the button** to toggle dark mode on or off.
+*   **Press Alt+Shift+D** (default shortcut) to toggle dark mode from anywhere on the page.
 *   **Click the "Settings" button (vertical button on the right side)** to open the settings panel.
 *   **In the settings panel,** you can:
     *   Change the button's position (top-left, top-right, bottom-left, bottom-right).
     *   Adjust the button's offset from the edge of the screen.
+    *   Apply theme presets for quick visual style changes.
     *   Configure DarkReader settings (brightness, contrast, sepia).
+    *   Set up automatic dark mode scheduling with custom times.
     *   Change the UI theme color and text color.
     *   Set the font family for the UI.
-    *   Add websites to the exclusion list to prevent dark mode from being applied on those sites.
+    *   Add websites to the exclusion list with support for wildcards.
+    *   Import and export your settings for backup or sharing.
     *   Reset all settings to their defaults.
 
 ## Configuration Options
@@ -42,15 +50,16 @@ After installation, a dark mode toggle button will appear on every website you v
 The following configuration options are available in the settings panel:
 
 *   **Position:** The position of the toggle button on the screen.
-*   **Offset X:** The horizontal offset of the toggle button from the edge of the screen (in pixels).
-*   **Offset Y:** The vertical offset of the toggle button from the edge of the screen (in pixels).
-*   **Brightness:** The brightness of the dark mode filter (0-100).
-*   **Contrast:** The contrast of the dark mode filter (0-100).
-*   **Sepia:** The sepia of the dark mode filter (0-100).
+*   **Offset X/Y:** The horizontal/vertical offset of the toggle button from the edge of the screen (in pixels).
+*   **Settings Button Offset:** Adjust the position of the settings button on the screen.
+*   **Theme Presets:** Quickly apply predefined visual themes (Default, High Contrast, Low Contrast, Sepia, Night Mode).
+*   **Brightness/Contrast/Sepia:** Fine-tune the dark mode filter appearance (0-150).
+*   **Scheduled Dark Mode:** Enable/disable automatic dark mode switching at specific times.
+*   **Start/End Time:** Set when dark mode should automatically activate and deactivate.
 *   **Font Family:** The font family used for the UI elements.
-*   **UI Theme Color:** The background color of the settings panel.
-*   **UI Text Color:** The text color of the settings panel.
-*   **Site Exclusion List:** A list of websites where dark mode should not be applied.  Enter the URL of the website and click "Add Exclusion".
+*   **UI Theme/Text Color:** Customize the appearance of the settings panel.
+*   **Site Exclusion List:** A list of websites where dark mode should not be applied. Supports wildcards (e.g., "example.com/*").
+*   **Import/Export Settings:** Back up or restore all your settings to/from a JSON file.
 
 ## Contributing
 
@@ -67,7 +76,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <summary><strong>Changelog</strong> (Click to expand)</summary>
 ---
 
-**v2.4.0 (Current)**
+**v2.5.0 (Current)**
+
+* **Scheduled Dark Mode:** Added automatic switching between light and dark modes based on configurable times.
+* **Theme Presets:** Added quick-select theme presets including Default, High Contrast, Low Contrast, Sepia, and Night Mode.
+* **Import/Export Functionality:** Added ability to backup and restore all settings including per-site preferences.
+* **Enhanced Site Exclusion:** Added support for wildcard patterns in the exclusion list for more flexible site matching.
+* **Keyboard Shortcuts:** Added configurable keyboard shortcuts for toggling dark mode (default: Alt+Shift+D).
+* **Performance Improvements:** Optimized mutation observer implementation for better efficiency.
+* **Improved Error Handling:** Enhanced error handling for settings operations.
+* **Code Structure:** Further improved code organization and reduced redundancy.
+
+**v2.4.0**
 
 * **Performance Optimization:** Improved script performance with optimized DOM operations and debounced functions to reduce resource usage.
 * **Enhanced Settings UI:** Restructured settings panel with clear sections, improved sliders with visual value display, and smoother animations.
