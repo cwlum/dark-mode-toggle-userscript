@@ -66,8 +66,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <details>
 <summary><strong>Changelog</strong> (Click to expand)</summary>
 
-### Changelog
-
 **v2.4.0 (Current)**
 
 * **Performance Optimization:** Improved script performance with optimized DOM operations and debounced functions to reduce resource usage.
