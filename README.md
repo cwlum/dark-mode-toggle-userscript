@@ -65,6 +65,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Updates
 <details>
 <summary><strong>Changelog</strong> (Click to expand)</summary>
+---
 
 **v2.4.0 (Current)**
 
