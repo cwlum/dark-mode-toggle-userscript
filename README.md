@@ -1,6 +1,8 @@
 # Dark Mode Toggle User Script
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Version](https://img.shields.io/badge/version-2.4.0-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Last Updated](https://img.shields.io/badge/last%20updated-2025--02--26-informational)
 
 A user script that adds a customizable dark mode toggle button to any website.
 
