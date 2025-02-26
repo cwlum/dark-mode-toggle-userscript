@@ -3,13 +3,14 @@
 // @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Enhanced dark mode toggle with improved performance, better code organization, and advanced site-specific preferences
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      2.4.0
+// @version      2.5.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.addStyle
 // @grant        GM.deleteValue
+// @grant        GM.listValues
 // @require      https://unpkg.com/darkreader@4.9.58/darkreader.js
 // @homepageURL  https://github.com/cwlum/dark-mode-toggle-userscript
 // @supportURL   https://github.com/cwlum/dark-mode-toggle-userscript/issues
@@ -31,7 +32,14 @@
         RESET_SETTINGS_BUTTON: 'resetSettingsButton',
         SITE_EXCLUSION_INPUT: 'siteExclusionInput',
         SITE_EXCLUSION_LIST: 'siteExclusionList',
-        AUTO_MODE_TOGGLE: 'autoModeToggle'
+        AUTO_MODE_TOGGLE: 'autoModeToggle',
+        EXPORT_SETTINGS_BUTTON: 'exportSettingsButton',
+        IMPORT_SETTINGS_BUTTON: 'importSettingsButton',
+        IMPORT_SETTINGS_INPUT: 'importSettingsInput',
+        SCHEDULE_ENABLED_TOGGLE: 'scheduleEnabledToggle',
+        SCHEDULE_START_TIME: 'scheduleStartTime',
+        SCHEDULE_END_TIME: 'scheduleEndTime',
+        THEME_PRESETS_SELECT: 'themePresetsSelect'
     };
 
     const STORAGE_KEYS = {
@@ -44,6 +52,40 @@
     const SVG_ICONS = {
         MOON: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`,
         SUN: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`
+    };
+
+    // Theme presets for quick application
+    const THEME_PRESETS = {
+        DEFAULT: {
+            name: 'Default',
+            brightness: 100,
+            contrast: 90,
+            sepia: 10
+        },
+        HIGH_CONTRAST: {
+            name: 'High Contrast',
+            brightness: 110,
+            contrast: 110,
+            sepia: 0
+        },
+        LOW_CONTRAST: {
+            name: 'Low Contrast',
+            brightness: 90,
+            contrast: 80,
+            sepia: 5
+        },
+        SEPIA: {
+            name: 'Sepia',
+            brightness: 100,
+            contrast: 95,
+            sepia: 40
+        },
+        NIGHT: {
+            name: 'Night Mode',
+            brightness: 80,
+            contrast: 100,
+            sepia: 0
+        }
     };
 
     /**
@@ -71,7 +113,18 @@
             height: 40
         },
         transitionSpeed: 0.3,
-        settingsButtonOffset: 20 // New setting to control the settings button position
+        settingsButtonOffset: 20, // New setting to control the settings button position
+        scheduledDarkMode: {
+            enabled: false,
+            startTime: '20:00',
+            endTime: '07:00'
+        },
+        keyboardShortcut: {
+            enabled: true,
+            alt: true,
+            shift: true,
+            key: 'd'
+        }
     };
 
     /**
@@ -84,6 +137,7 @@
     let darkModeEnabled = false;
     let uiElements = {};
     let isInitialized = false;
+    let scheduleCheckInterval = null;
 
     /**
      * ------------------------
@@ -112,7 +166,16 @@
      * @return {boolean} Whether site is excluded
      */
     function isSiteExcluded(url) {
-        return settings.exclusionList.some(excluded => url.startsWith(excluded));
+        return settings.exclusionList.some(pattern => {
+            // Support basic wildcards
+            if (pattern.includes('*')) {
+                const regexPattern = pattern
+                    .replace(/\./g, '\\.')
+                    .replace(/\*/g, '.*');
+                return new RegExp('^' + regexPattern + '$').test(url);
+            }
+            return url.startsWith(pattern);
+        });
     }
 
     /**
@@ -200,6 +263,16 @@
                 settings.exclusionList = [];
             }
             
+            // Ensure scheduledDarkMode settings exist
+            if (!settings.scheduledDarkMode) {
+                settings.scheduledDarkMode = DEFAULT_SETTINGS.scheduledDarkMode;
+            }
+            
+            // Ensure keyboard shortcut settings exist
+            if (!settings.keyboardShortcut) {
+                settings.keyboardShortcut = DEFAULT_SETTINGS.keyboardShortcut;
+            }
+            
             updateButtonPosition();
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -217,6 +290,9 @@
             updateButtonPosition();
             updateDarkReaderConfig();
             updateExclusionListDisplay();
+            
+            // Update schedule checking if needed
+            setupScheduleChecking();
         } catch (error) {
             console.error('Failed to save settings:', error);
         }
@@ -269,6 +345,9 @@
                 updateExclusionListDisplay();
                 toggleDarkMode(false);
                 await savePerSiteSettings();
+                
+                // Reset schedule checking
+                setupScheduleChecking();
 
                 alert('All settings have been reset to defaults.');
 
@@ -276,6 +355,109 @@
                 console.error("Error during reset:", error);
                 alert("An error occurred during settings reset. Please check the console.");
             }
+        }
+    }
+
+    /**
+     * Export settings to a JSON file
+     */
+    async function exportSettings() {
+        try {
+            // Get all per-site settings
+            const perSiteSettings = {};
+            const allKeys = await GM.listValues ? GM.listValues() : [];
+            
+            if (Array.isArray(allKeys)) {
+                for (const key of allKeys) {
+                    if (key.startsWith(STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX)) {
+                        const siteData = await GM.getValue(key);
+                        perSiteSettings[key] = siteData;
+                    }
+                }
+            }
+            
+            const exportData = {
+                global: settings,
+                perSite: perSiteSettings,
+                darkModeEnabled: darkModeEnabled,
+                version: '2.5.0'
+            };
+            
+            const jsonString = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonString], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'dark-mode-toggle-settings.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+            }, 100);
+            
+        } catch (error) {
+            console.error('Failed to export settings:', error);
+            alert('Failed to export settings. See console for details.');
+        }
+    }
+
+    /**
+     * Import settings from a JSON file
+     * @param {File} file - The settings file to import
+     */
+    async function importSettings(file) {
+        try {
+            const reader = new FileReader();
+            
+            reader.onload = async (e) => {
+                try {
+                    const importData = JSON.parse(e.target.result);
+                    
+                    if (!importData.global || !importData.version) {
+                        throw new Error('Invalid settings file format');
+                    }
+                    
+                    // Import global settings
+                    settings = { ...DEFAULT_SETTINGS, ...importData.global };
+                    await GM.setValue(STORAGE_KEYS.SETTINGS, settings);
+                    
+                    // Import dark mode state
+                    if (typeof importData.darkModeEnabled === 'boolean') {
+                        darkModeEnabled = importData.darkModeEnabled;
+                        await GM.setValue(STORAGE_KEYS.DARK_MODE, darkModeEnabled);
+                    }
+                    
+                    // Import per-site settings
+                    if (importData.perSite) {
+                        for (const [key, value] of Object.entries(importData.perSite)) {
+                            await GM.setValue(key, value);
+                        }
+                    }
+                    
+                    // Update UI to reflect imported settings
+                    updateButtonPosition();
+                    updateDarkReaderConfig();
+                    updateUIValues();
+                    updateButtonState();
+                    updateExclusionListDisplay();
+                    setupScheduleChecking();
+                    
+                    alert('Settings imported successfully!');
+                    
+                } catch (parseError) {
+                    console.error('Failed to parse settings file:', parseError);
+                    alert('Failed to import settings: Invalid file format');
+                }
+            };
+            
+            reader.readAsText(file);
+            
+        } catch (error) {
+            console.error('Failed to import settings:', error);
+            alert('Failed to import settings. See console for details.');
         }
     }
 
@@ -333,6 +515,79 @@
         } else {
             DarkReader.disable();
         }
+    }
+
+    /**
+     * Check scheduled dark mode and apply if needed
+     */
+    function checkScheduledDarkMode() {
+        if (!settings.scheduledDarkMode || !settings.scheduledDarkMode.enabled) return;
+        
+        const now = new Date();
+        const currentHours = now.getHours();
+        const currentMinutes = now.getMinutes();
+        const currentTime = currentHours * 60 + currentMinutes; // Convert to minutes since midnight
+        
+        // Parse schedule times
+        const [startHours, startMinutes] = settings.scheduledDarkMode.startTime.split(':').map(Number);
+        const [endHours, endMinutes] = settings.scheduledDarkMode.endTime.split(':').map(Number);
+        
+        const startTime = startHours * 60 + startMinutes;
+        const endTime = endHours * 60 + endMinutes;
+        
+        let shouldBeDark;
+        
+        // Handle time ranges that cross midnight
+        if (startTime > endTime) {
+            // Example: 22:00 to 06:00 - dark mode is active across midnight
+            shouldBeDark = currentTime >= startTime || currentTime < endTime;
+        } else {
+            // Example: 06:00 to 22:00 - dark mode is active within the same day
+            shouldBeDark = currentTime >= startTime && currentTime < endTime;
+        }
+        
+        // Only toggle if the current state doesn't match what it should be
+        if (shouldBeDark !== darkModeEnabled) {
+            console.log(`Scheduled dark mode: Setting to ${shouldBeDark ? 'enabled' : 'disabled'}`);
+            toggleDarkMode(shouldBeDark);
+        }
+    }
+
+    /**
+     * Setup the interval for checking scheduled dark mode
+     */
+    function setupScheduleChecking() {
+        // Clear any existing interval
+        if (scheduleCheckInterval) {
+            clearInterval(scheduleCheckInterval);
+            scheduleCheckInterval = null;
+        }
+        
+        // If scheduling is enabled, set up the interval
+        if (settings.scheduledDarkMode && settings.scheduledDarkMode.enabled) {
+            // Run immediately once
+            checkScheduledDarkMode();
+            
+            // Then set up the interval to check every minute
+            scheduleCheckInterval = setInterval(checkScheduledDarkMode, 60000);
+        }
+    }
+
+    /**
+     * Apply a theme preset to the current settings
+     * @param {string} presetKey - The key of the preset to apply
+     */
+    function applyThemePreset(presetKey) {
+        const preset = THEME_PRESETS[presetKey];
+        if (!preset) return;
+        
+        settings.brightness = preset.brightness;
+        settings.contrast = preset.contrast;
+        settings.sepia = preset.sepia;
+        
+        updateUIValues();
+        saveSettings();
+        updateDarkReaderConfig();
     }
 
     /**
@@ -477,6 +732,42 @@
         
         ui.appendChild(positionSection);
 
+        // Theme presets section
+        const themePresetsSection = createSettingSection('Theme Presets');
+        
+        uiElements.themePresetsSelect = document.createElement('select');
+        uiElements.themePresetsSelect.id = ELEMENT_IDS.THEME_PRESETS_SELECT;
+        uiElements.themePresetsSelect.setAttribute('aria-label', 'Theme Presets');
+        
+        // Add blank option
+        const blankOption = document.createElement('option');
+        blankOption.value = '';
+        blankOption.textContent = '-- Select Preset --';
+        uiElements.themePresetsSelect.appendChild(blankOption);
+        
+        // Add all theme presets
+        Object.entries(THEME_PRESETS).forEach(([key, preset]) => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = preset.name;
+            uiElements.themePresetsSelect.appendChild(option);
+        });
+        
+        uiElements.themePresetsSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                applyThemePreset(e.target.value);
+                // Reset select back to blank option
+                e.target.value = '';
+            }
+        });
+        
+        themePresetsSection.appendChild(createFormGroup(
+            createLabel('Apply Preset:'), 
+            uiElements.themePresetsSelect
+        ));
+        
+        ui.appendChild(themePresetsSection);
+
         // Dark mode settings section
         const darkModeSection = createSettingSection('Dark Mode Settings');
         
@@ -518,6 +809,70 @@
         ));
         
         ui.appendChild(darkModeSection);
+
+        // Scheduled dark mode section
+        const scheduleSection = createSettingSection('Schedule Dark Mode');
+        
+        // Schedule toggle
+        uiElements.scheduleEnabledToggle = document.createElement('input');
+        uiElements.scheduleEnabledToggle.type = 'checkbox';
+        uiElements.scheduleEnabledToggle.id = ELEMENT_IDS.SCHEDULE_ENABLED_TOGGLE;
+        uiElements.scheduleEnabledToggle.checked = settings.scheduledDarkMode && settings.scheduledDarkMode.enabled;
+        uiElements.scheduleEnabledToggle.addEventListener('change', (e) => {
+            if (!settings.scheduledDarkMode) {
+                settings.scheduledDarkMode = { ...DEFAULT_SETTINGS.scheduledDarkMode };
+            }
+            settings.scheduledDarkMode.enabled = e.target.checked;
+            saveSettings();
+            setupScheduleChecking();
+        });
+        
+        // Schedule time inputs
+        uiElements.scheduleStartTime = document.createElement('input');
+        uiElements.scheduleStartTime.type = 'time';
+        uiElements.scheduleStartTime.id = ELEMENT_IDS.SCHEDULE_START_TIME;
+        uiElements.scheduleStartTime.value = settings.scheduledDarkMode ? settings.scheduledDarkMode.startTime : DEFAULT_SETTINGS.scheduledDarkMode.startTime;
+        uiElements.scheduleStartTime.addEventListener('change', (e) => {
+            if (!settings.scheduledDarkMode) {
+                settings.scheduledDarkMode = { ...DEFAULT_SETTINGS.scheduledDarkMode };
+            }
+            settings.scheduledDarkMode.startTime = e.target.value;
+            saveSettings();
+        });
+        
+        uiElements.scheduleEndTime = document.createElement('input');
+        uiElements.scheduleEndTime.type = 'time';
+        uiElements.scheduleEndTime.id = ELEMENT_IDS.SCHEDULE_END_TIME;
+        uiElements.scheduleEndTime.value = settings.scheduledDarkMode ? settings.scheduledDarkMode.endTime : DEFAULT_SETTINGS.scheduledDarkMode.endTime;
+        uiElements.scheduleEndTime.addEventListener('change', (e) => {
+            if (!settings.scheduledDarkMode) {
+                settings.scheduledDarkMode = { ...DEFAULT_SETTINGS.scheduledDarkMode };
+            }
+            settings.scheduledDarkMode.endTime = e.target.value;
+            saveSettings();
+        });
+        
+        scheduleSection.appendChild(createFormGroup(
+            createLabel('Enable Schedule:'), 
+            uiElements.scheduleEnabledToggle
+        ));
+        
+        scheduleSection.appendChild(createFormGroup(
+            createLabel('Start Time:'), 
+            uiElements.scheduleStartTime
+        ));
+        
+        scheduleSection.appendChild(createFormGroup(
+            createLabel('End Time:'), 
+            uiElements.scheduleEndTime
+        ));
+        
+        const scheduleExplanation = document.createElement('p');
+        scheduleExplanation.className = 'schedule-info';
+        scheduleExplanation.textContent = 'Note: If start time is after end time, dark mode will be active overnight.';
+        scheduleSection.appendChild(scheduleExplanation);
+        
+        ui.appendChild(scheduleSection);
 
         // Appearance settings section
         const appearanceSection = createSettingSection('Appearance');
@@ -570,7 +925,7 @@
         uiElements.siteExclusionInput.type = 'text';
         uiElements.siteExclusionInput.id = ELEMENT_IDS.SITE_EXCLUSION_INPUT;
         uiElements.siteExclusionInput.setAttribute('aria-label', 'Enter URL to exclude');
-        uiElements.siteExclusionInput.placeholder = 'Enter URL to exclude';
+        uiElements.siteExclusionInput.placeholder = 'Enter URL to exclude (e.g. example.com/*)';
         
         const exclusionInputGroup = document.createElement('div');
         exclusionInputGroup.className = 'input-group';
@@ -606,6 +961,35 @@
         
         ui.appendChild(exclusionsSection);
 
+        // Import/Export section
+        const importExportSection = createSettingSection('Import/Export');
+        
+        // Export button
+        const exportButton = createButton(ELEMENT_IDS.EXPORT_SETTINGS_BUTTON, 'Export Settings', exportSettings);
+        
+        // Import button and file input
+        uiElements.importSettingsInput = document.createElement('input');
+        uiElements.importSettingsInput.type = 'file';
+        uiElements.importSettingsInput.id = ELEMENT_IDS.IMPORT_SETTINGS_INPUT;
+        uiElements.importSettingsInput.accept = '.json';
+        uiElements.importSettingsInput.style.display = 'none';
+        
+        uiElements.importSettingsInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                importSettings(e.target.files[0]);
+            }
+        });
+        
+        const importButton = createButton(ELEMENT_IDS.IMPORT_SETTINGS_BUTTON, 'Import Settings', () => {
+            uiElements.importSettingsInput.click();
+        });
+        
+        importExportSection.appendChild(exportButton);
+        importExportSection.appendChild(importButton);
+        importExportSection.appendChild(uiElements.importSettingsInput);
+        
+        ui.appendChild(importExportSection);
+
         // Actions section
         const actionsSection = createSettingSection('Actions');
         
@@ -618,7 +1002,7 @@
         // Version info
         const versionInfo = document.createElement('div');
         versionInfo.className = 'version-info';
-        versionInfo.textContent = 'Dark Mode Toggle v2.4.0';
+        versionInfo.textContent = 'Dark Mode Toggle v2.5.0';
         ui.appendChild(versionInfo);
 
         document.body.appendChild(ui);
@@ -832,6 +1216,13 @@
             uiElements.settingsButtonOffsetInput.value = settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset;
         }
         
+        // Update scheduled dark mode values
+        if (uiElements.scheduleEnabledToggle && settings.scheduledDarkMode) {
+            uiElements.scheduleEnabledToggle.checked = settings.scheduledDarkMode.enabled;
+            uiElements.scheduleStartTime.value = settings.scheduledDarkMode.startTime;
+            uiElements.scheduleEndTime.value = settings.scheduledDarkMode.endTime;
+        }
+        
         updateExclusionListDisplay();
     }
 
@@ -993,7 +1384,8 @@
             #${ELEMENT_IDS.UI} select, 
             #${ELEMENT_IDS.UI} input[type="number"], 
             #${ELEMENT_IDS.UI} input[type="color"], 
-            #${ELEMENT_IDS.UI} input[type="text"] {
+            #${ELEMENT_IDS.UI} input[type="text"],
+            #${ELEMENT_IDS.UI} input[type="time"] {
                 padding: 8px;
                 border: 1px solid rgba(0, 0, 0, 0.2);
                 border-radius: 4px;
@@ -1078,6 +1470,8 @@
                 cursor: pointer;
                 font-size: 12px;
                 transition: background-color 0.2s;
+                margin-right: 5px;
+                margin-bottom: 5px;
             }
             
             #${ELEMENT_IDS.UI} button:hover {
@@ -1091,6 +1485,7 @@
                 color: white;
                 border-radius: 3px;
                 border: none;
+                margin: 0;
             }
             
             #${ELEMENT_IDS.UI} .remove-button:hover {
@@ -1109,6 +1504,29 @@
 
             #${ELEMENT_IDS.RESET_SETTINGS_BUTTON}:hover {
                 background-color: #ff1a1a;
+            }
+
+            #${ELEMENT_IDS.EXPORT_SETTINGS_BUTTON}, 
+            #${ELEMENT_IDS.IMPORT_SETTINGS_BUTTON} {
+                background-color: #4CAF50;
+                color: white;
+                padding: 8px 12px;
+                border: none;
+                width: calc(50% - 5px);
+                margin-top: 5px;
+            }
+
+            #${ELEMENT_IDS.EXPORT_SETTINGS_BUTTON}:hover, 
+            #${ELEMENT_IDS.IMPORT_SETTINGS_BUTTON}:hover {
+                background-color: #45a049;
+            }
+
+            .schedule-info {
+                font-size: 11px;
+                color: rgba(0, 0, 0, 0.6);
+                font-style: italic;
+                margin-top: 5px;
+                margin-bottom: 5px;
             }
 
             /* Toggle UI Button Styles */
@@ -1143,6 +1561,29 @@
                 text-align: center;
             }
         `;
+    }
+
+    /**
+     * Setup keyboard shortcuts for toggling dark mode
+     */
+    function setupKeyboardShortcuts() {
+        if (!settings.keyboardShortcut || !settings.keyboardShortcut.enabled) return;
+        
+        document.addEventListener('keydown', (e) => {
+            const shortcut = settings.keyboardShortcut;
+            
+            if (
+                (!shortcut.alt || e.altKey) &&
+                (!shortcut.shift || e.shiftKey) &&
+                (!shortcut.ctrl || e.ctrlKey) &&
+                (!shortcut.meta || e.metaKey) &&
+                e.key.toLowerCase() === shortcut.key.toLowerCase()
+            ) {
+                // Prevent default browser action if shortcut is triggered
+                e.preventDefault();
+                toggleDarkMode();
+            }
+        });
     }
 
     /**
@@ -1181,6 +1622,12 @@
             toggleDarkMode(false);
         }
         
+        // Set up keyboard shortcuts
+        setupKeyboardShortcuts();
+        
+        // Set up scheduled dark mode checking
+        setupScheduleChecking();
+        
         console.log('Dark Mode Toggle: Initialization complete');
     }
 
@@ -1188,7 +1635,9 @@
      * Setup DOM mutation observer to ensure UI elements persist
      */
     function setupMutationObserver() {
+        // More targeted mutation observer approach
         const observer = new MutationObserver(debounce(() => {
+            // Only check for critical UI elements and recreate if missing
             const buttonExists = document.getElementById(ELEMENT_IDS.BUTTON);
             if (!buttonExists) {
                 console.log('Dark Mode Toggle: Button missing, recreating...');
@@ -1197,24 +1646,34 @@
                 updateButtonState();
             }
 
-            const uiExists = document.getElementById(ELEMENT_IDS.UI);
-            if (!uiExists) {
-                console.log('Dark Mode Toggle: UI missing, recreating...');
-                createUI();
-                updateUIValues();
-                applyUIStyles();
-            }
-
             const toggleUIButtonExists = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
             if (!toggleUIButtonExists) {
                 console.log('Dark Mode Toggle: Settings button missing, recreating...');
                 createToggleUIButton();
             }
-        }, 500));
 
+            // Only recreate UI when it's supposed to be visible but is missing
+            if (uiVisible) {
+                const uiExists = document.getElementById(ELEMENT_IDS.UI);
+                if (!uiExists) {
+                    console.log('Dark Mode Toggle: UI missing, recreating...');
+                    createUI();
+                    updateUIValues();
+                    applyUIStyles();
+                    // Make it visible again since creating it doesn't automatically show it
+                    const newUI = document.getElementById(ELEMENT_IDS.UI);
+                    if (newUI) {
+                        newUI.classList.add('visible');
+                        newUI.setAttribute('aria-hidden', 'false');
+                    }
+                }
+            }
+        }, 300));  // Reduced from 500ms to 300ms for better responsiveness
+
+        // Observe the body but with a subtree depth of 1 to avoid expensive deep watching
         observer.observe(document.body, {
             childList: true,
-            subtree: true
+            subtree: false
         });
     }
 
@@ -1241,5 +1700,3 @@
     }
 
 })();
-
-    
