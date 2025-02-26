@@ -63,7 +63,10 @@ If you would like to contribute code, please fork the repository and submit a pu
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Updates
-# Changelog
+<details>
+<summary><strong>Changelog</strong> (Click to expand)</summary>
+
+### Changelog
 
 **v2.4.0 (Current)**
 
@@ -101,3 +104,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 *   **UI Redesign:** Complete overhaul of the settings user interface, offering more intuitive controls and customization options.
 *   **Site Exclusion List:**  Introduced a feature to exclude specific websites from dark mode.
 *   **Dynamic UI Styling:** The UI theme color, text color, and font family can now be customized.
+
+</details>
