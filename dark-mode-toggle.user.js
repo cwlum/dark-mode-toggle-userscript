@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ☀️Dark Mode Toggle
 // @author       Cervantes Wu (http://www.mriwu.us)
-// @description  Enhanced dark mode toggle with improved performance, better code organization, and advanced site-specific preferences
+// @description  Ultra enhanced dark mode toggle with improved compatibility, extreme mode, dynamic selectors and advanced DOM monitoring
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      2.5.0
+// @version      3.0.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
@@ -11,10 +11,14 @@
 // @grant        GM.addStyle
 // @grant        GM.deleteValue
 // @grant        GM.listValues
+// @grant        GM.registerMenuCommand
+// @grant        GM_addElement
+// @grant        unsafeWindow
 // @require      https://unpkg.com/darkreader@4.9.58/darkreader.js
 // @homepageURL  https://github.com/cwlum/dark-mode-toggle-userscript
 // @supportURL   https://github.com/cwlum/dark-mode-toggle-userscript/issues
 // @license      MIT
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
@@ -39,19 +43,27 @@
         SCHEDULE_ENABLED_TOGGLE: 'scheduleEnabledToggle',
         SCHEDULE_START_TIME: 'scheduleStartTime',
         SCHEDULE_END_TIME: 'scheduleEndTime',
-        THEME_PRESETS_SELECT: 'themePresetsSelect'
+        THEME_PRESETS_SELECT: 'themePresetsSelect',
+        EXTREME_MODE_TOGGLE: 'extremeModeToggle', // New element ID for extreme mode toggle
+        CUSTOM_CSS_TEXTAREA: 'customCssTextarea', // New element ID for custom CSS input
+        DYNAMIC_SELECTORS_TOGGLE: 'dynamicSelectorsToggle', // New element ID for dynamic selectors toggle
+        FORCE_DARK_TOGGLE: 'forceDarkToggle', // New element ID for force dark mode toggle
+        SHOW_DIAGNOSTICS_BUTTON: 'showDiagnosticsButton' // New element ID for diagnostics button
     };
 
     const STORAGE_KEYS = {
         SETTINGS: 'settings',
         DARK_MODE: 'darkMode',
-        PER_SITE_SETTINGS_PREFIX: 'perSiteSettings_'
+        PER_SITE_SETTINGS_PREFIX: 'perSiteSettings_',
+        CUSTOM_CSS_PREFIX: 'customCss_', // New storage key prefix for per-site custom CSS
+        PROBLEMATIC_SITES: 'problematicSites' // New storage key for tracking problematic sites
     };
 
     // Complete SVG icons for moon and sun
     const SVG_ICONS = {
         MOON: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`,
-        SUN: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`
+        SUN: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`,
+        GEAR: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
     };
 
     // Theme presets for quick application
@@ -85,6 +97,101 @@
             brightness: 80,
             contrast: 100,
             sepia: 0
+        },
+        // New extreme mode presets
+        ULTRA_DARK: {
+            name: 'Ultra Dark',
+            brightness: 70,
+            contrast: 120,
+            sepia: 0
+        },
+        MIDNIGHT: {
+            name: 'Midnight',
+            brightness: 60,
+            contrast: 130,
+            sepia: 0
+        }
+    };
+
+    // List of known problematic sites and their specific fixes
+    const PROBLEMATIC_SITES = {
+        'youtube.com': {
+            description: 'YouTube needs special handling for video player and comments',
+            fixMethod: 'useCustomCss',
+            customCss: `
+                /* Fix for YouTube dark mode compatibility */
+                html[dark] {
+                    --yt-spec-text-primary: #f1f1f1 !important;
+                    --yt-spec-text-secondary: #aaa !important;
+                    --yt-spec-general-background-a: #181818 !important;
+                }
+                ytd-watch-flexy {
+                    background-color: var(--yt-spec-general-background-a, #181818) !important;
+                }
+                /* Fix for comment section */
+                ytd-comments {
+                    background-color: var(--yt-spec-general-background-a, #181818) !important;
+                }
+            `
+        },
+        'facebook.com': {
+            description: 'Facebook has its own dark mode which may conflict',
+            fixMethod: 'forceElementStyles',
+            selectors: [
+                { selector: '[role="main"]', styles: { backgroundColor: '#1c1e21 !important' } },
+                { selector: '[role="feed"]', styles: { backgroundColor: '#1c1e21 !important' } }
+            ]
+        },
+        'twitter.com': {
+            description: 'Twitter/X has its own dark mode which may conflict',
+            fixMethod: 'useCustomCss',
+            customCss: `
+                /* Force dark background on Twitter/X */
+                body {
+                    background-color: #15202b !important;
+                }
+                div[data-testid="primaryColumn"] {
+                    background-color: #15202b !important;
+                }
+                /* Fix text color */
+                div[data-testid="tweetText"] {
+                    color: #ffffff !important;
+                }
+            `
+        },
+        'reddit.com': {
+            description: 'Reddit has its own dark mode which may conflict',
+            fixMethod: 'useCustomCss',
+            customCss: `
+                /* Force dark background on Reddit */
+                body {
+                    background-color: #1a1a1b !important;
+                }
+                .Post {
+                    background-color: #272729 !important;
+                }
+                /* Fix text color */
+                .Post * {
+                    color: #d7dadc !important;
+                }
+            `
+        },
+        'github.com': {
+            description: 'GitHub has its own dark mode which may conflict',
+            fixMethod: 'useCustomCss',
+            customCss: `
+                /* Force dark background on GitHub */
+                body {
+                    background-color: #0d1117 !important;
+                    color: #c9d1d9 !important;
+                }
+                .Header {
+                    background-color: #161b22 !important;
+                }
+                .repository-content {
+                    background-color: #0d1117 !important;
+                }
+            `
         }
     };
 
@@ -113,7 +220,7 @@
             height: 40
         },
         transitionSpeed: 0.3,
-        settingsButtonOffset: 20, // New setting to control the settings button position
+        settingsButtonOffset: 20,
         scheduledDarkMode: {
             enabled: false,
             startTime: '20:00',
@@ -124,6 +231,25 @@
             alt: true,
             shift: true,
             key: 'd'
+        },
+        // New settings for enhanced functionality
+        extremeMode: {
+            enabled: false,
+            forceDarkElements: true,
+            ignoreImageAnalysis: true,
+            useCustomCSS: false,
+            customCSSPerSite: {}
+        },
+        dynamicSelectors: {
+            enabled: true,
+            detectShadowDOM: true,
+            deepScan: true,
+            scanInterval: 2000
+        },
+        diagnostics: {
+            enabled: false,
+            logLevel: 'info',
+            collectStats: true
         }
     };
 
@@ -138,6 +264,18 @@
     let uiElements = {};
     let isInitialized = false;
     let scheduleCheckInterval = null;
+    let dynamicScanInterval = null;
+    let shadowRoots = new Set(); // Track shadow DOM roots
+    let currentSiteCustomCSS = ''; // Current site's custom CSS
+    let diagnosticsData = {
+        siteInfo: {},
+        performance: {},
+        issues: []
+    };
+    let customStyleElements = []; // Track injected style elements
+    let extremeModeActive = false; // Track if extreme mode is currently active
+    let originalStyles = new Map(); // Store original element styles for restoration
+    let forcedElementsCount = 0; // Count forced elements for diagnostics
 
     /**
      * ------------------------
@@ -158,6 +296,77 @@
             clearTimeout(timeout);
             timeout = setTimeout(() => func.apply(context, args), delay);
         };
+    }
+
+    /**
+     * Throttle function to limit how often a function is executed
+     * @param {Function} func - Function to throttle
+     * @param {number} limit - Limit in ms
+     * @return {Function} Throttled function
+     */
+    function throttle(func, limit) {
+        let inThrottle;
+        return function(...args) {
+            const context = this;
+            if (!inThrottle) {
+                func.apply(context, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        };
+    }
+
+    /**
+     * Log with level filtering based on settings
+     * @param {string} level - Log level
+     * @param {string} message - Message to log
+     * @param {any} data - Optional data to log
+     */
+    function log(level, message, data = null) {
+        const logLevels = {
+            error: 0,
+            warn: 1,
+            info: 2,
+            debug: 3
+        };
+
+        const settingsLevel = settings.diagnostics && settings.diagnostics.logLevel ? 
+            settings.diagnostics.logLevel : 'info';
+        
+        if (logLevels[level] <= logLevels[settingsLevel]) {
+            const logMessage = `[Dark Mode Toggle] ${message}`;
+            
+            switch (level) {
+                case 'error':
+                    console.error(logMessage, data || '');
+                    if (settings.diagnostics && settings.diagnostics.enabled) {
+                        diagnosticsData.issues.push({
+                            type: 'error',
+                            message: message,
+                            timestamp: new Date().toISOString(),
+                            data: data ? JSON.stringify(data) : null
+                        });
+                    }
+                    break;
+                case 'warn':
+                    console.warn(logMessage, data || '');
+                    if (settings.diagnostics && settings.diagnostics.enabled) {
+                        diagnosticsData.issues.push({
+                            type: 'warning',
+                            message: message,
+                            timestamp: new Date().toISOString(),
+                            data: data ? JSON.stringify(data) : null
+                        });
+                    }
+                    break;
+                case 'info':
+                    console.info(logMessage, data || '');
+                    break;
+                case 'debug':
+                    console.debug(logMessage, data || '');
+                    break;
+            }
+        }
     }
 
     /**
@@ -202,6 +411,600 @@
     }
 
     /**
+     * Check if site is known to be problematic
+     * @return {Object|null} Site info if problematic, null otherwise
+     */
+    function getProblematicSiteInfo() {
+        const hostname = window.location.hostname;
+        
+        for (const site in PROBLEMATIC_SITES) {
+            if (hostname.includes(site)) {
+                return {
+                    ...PROBLEMATIC_SITES[site],
+                    key: site
+                };
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Apply fixes for problematic sites
+     */
+    function applyProblematicSiteFixes() {
+        const siteInfo = getProblematicSiteInfo();
+        if (!siteInfo) return;
+        
+        log('info', `Applying fixes for problematic site: ${siteInfo.key}`, siteInfo);
+        
+        switch (siteInfo.fixMethod) {
+            case 'useCustomCss':
+                injectCustomCSS(siteInfo.customCss, 'problematic-site-fix');
+                break;
+                
+            case 'forceElementStyles':
+                if (siteInfo.selectors && Array.isArray(siteInfo.selectors)) {
+                    siteInfo.selectors.forEach(({ selector, styles }) => {
+                        forceElementStyles(selector, styles);
+                    });
+                }
+                break;
+                
+            default:
+                log('warn', `Unknown fix method: ${siteInfo.fixMethod}`);
+        }
+    }
+
+    /**
+     * Force styles on elements matching a selector
+     * @param {string} selector - CSS selector
+     * @param {Object} styles - Styles to apply
+     */
+    function forceElementStyles(selector, styles) {
+        try {
+            const elements = Array.from(document.querySelectorAll(selector));
+            
+            // Also try to find elements in shadow DOM if enabled
+            if (settings.dynamicSelectors && settings.dynamicSelectors.detectShadowDOM) {
+                shadowRoots.forEach(root => {
+                    try {
+                        const shadowElements = Array.from(root.querySelectorAll(selector));
+                        elements.push(...shadowElements);
+                    } catch (error) {
+                        log('debug', `Error querying shadow DOM: ${error.message}`, { selector, root });
+                    }
+                });
+            }
+            
+            if (elements.length > 0) {
+                elements.forEach(element => {
+                    if (!originalStyles.has(element)) {
+                        // Store original inline styles for potential restoration
+                        originalStyles.set(element, element.getAttribute('style') || '');
+                    }
+                    
+                    // Apply forced styles
+                    let styleString = '';
+                    for (const [property, value] of Object.entries(styles)) {
+                        styleString += `${property}: ${value}; `;
+                    }
+                    
+                    element.setAttribute('style', styleString);
+                    forcedElementsCount++;
+                });
+                
+                log('debug', `Forced styles on ${elements.length} elements`, { selector });
+            }
+        } catch (error) {
+            log('error', `Error forcing element styles: ${error.message}`, { selector, styles });
+        }
+    }
+
+    /**
+     * Inject custom CSS to the page
+     * @param {string} css - CSS to inject
+     * @param {string} id - Identifier for the style element
+     */
+    function injectCustomCSS(css, id) {
+        // Remove existing style with same ID if it exists
+        const existingStyle = document.getElementById(id);
+        if (existingStyle) {
+            existingStyle.remove();
+            customStyleElements = customStyleElements.filter(el => el.id !== id);
+        }
+        
+        // Create and inject new style
+        try {
+            const style = document.createElement('style');
+            style.id = id;
+            style.innerHTML = css;
+            document.head.appendChild(style);
+            customStyleElements.push(style);
+            
+            log('debug', `Injected custom CSS with ID: ${id}`, { length: css.length });
+        } catch (error) {
+            log('error', `Error injecting custom CSS: ${error.message}`, { id });
+        }
+    }
+
+    /**
+     * Collect website information for diagnostics
+     */
+    function collectSiteInfo() {
+        if (!settings.diagnostics || !settings.diagnostics.enabled) return;
+        
+        try {
+            diagnosticsData.siteInfo = {
+                url: window.location.href,
+                domain: window.location.hostname,
+                title: document.title,
+                theme: detectSiteThemeSettings(),
+                shadowDOMCount: shadowRoots.size,
+                iframeCount: document.querySelectorAll('iframe').length,
+                customStylesCount: customStyleElements.length,
+                forcedElementsCount: forcedElementsCount,
+                problematicSite: getProblematicSiteInfo() ? true : false,
+                screenWidth: window.innerWidth,
+                screenHeight: window.innerHeight
+            };
+        } catch (error) {
+            log('error', `Error collecting site info: ${error.message}`);
+        }
+    }
+
+    /**
+     * Detect if site already has theme settings
+     * @return {Object} Theme information
+     */
+    function detectSiteThemeSettings() {
+        const result = {
+            hasDarkMode: false,
+            hasDarkModeToggle: false,
+            mediaQueryPrefers: window.matchMedia('(prefers-color-scheme: dark)').matches,
+            darkModeClasses: false
+        };
+        
+        // Check for common theme classes/attributes on html or body
+        const htmlElement = document.documentElement;
+        const bodyElement = document.body;
+        
+        if (htmlElement) {
+            if (htmlElement.classList.contains('dark') || 
+                htmlElement.classList.contains('darkmode') || 
+                htmlElement.classList.contains('dark-mode') ||
+                htmlElement.getAttribute('data-theme') === 'dark' ||
+                htmlElement.getAttribute('theme') === 'dark') {
+                result.hasDarkMode = true;
+                result.darkModeClasses = true;
+            }
+        }
+        
+        if (bodyElement) {
+            if (bodyElement.classList.contains('dark') || 
+                bodyElement.classList.contains('darkmode') || 
+                bodyElement.classList.contains('dark-mode') ||
+                bodyElement.getAttribute('data-theme') === 'dark' ||
+                bodyElement.getAttribute('theme') === 'dark') {
+                result.hasDarkMode = true;
+                result.darkModeClasses = true;
+            }
+        }
+        
+        // Check for common dark mode toggles
+        const darkModeToggleSelectors = [
+            '[aria-label*="dark mode"]',
+            '[aria-label*="night mode"]',
+            '[title*="dark mode"]',
+            '[title*="night mode"]',
+            '[data-action*="dark-mode"]',
+            '[data-action*="night-mode"]',
+            '[class*="darkModeToggle"]',
+            '[id*="dark-mode"]',
+            '[id*="darkmode"]',
+            'button:has(svg[aria-label*="dark"])',
+            'svg[aria-label*="dark"]'
+        ];
+        
+        const toggles = document.querySelectorAll(darkModeToggleSelectors.join(','));
+        if (toggles.length > 0) {
+            result.hasDarkModeToggle = true;
+        }
+        
+        return result;
+    }
+
+    /**
+     * Generate a diagnostic report
+     */
+    function generateDiagnosticReport() {
+        collectSiteInfo();
+        
+        const report = {
+            timestamp: new Date().toISOString(),
+            version: '3.0.0',
+            settings: { ...settings },
+            siteInfo: diagnosticsData.siteInfo,
+            issues: diagnosticsData.issues,
+            performance: diagnosticsData.performance,
+            currentState: {
+                darkModeEnabled,
+                extremeModeActive,
+                forcedElementsCount,
+                customStylesCount: customStyleElements.length,
+                shadowRootsCount: shadowRoots.size
+            }
+        };
+        
+        // Clean up sensitive information if needed
+        delete report.settings.keyboardShortcut;
+        
+        return report;
+    }
+
+    /**
+     * Show diagnostic report in UI
+     */
+    function showDiagnosticReport() {
+        const report = generateDiagnosticReport();
+        const reportString = JSON.stringify(report, null, 2);
+        
+        // Create a modal to display the report
+        const modalContainer = document.createElement('div');
+        modalContainer.id = 'darkModeToggleDiagnostics';
+        modalContainer.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 80%;
+            max-height: 80%;
+            overflow: auto;
+            color: #333;
+            font-family: monospace;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        `;
+        
+        const heading = document.createElement('h2');
+        heading.textContent = 'Dark Mode Toggle Diagnostic Report';
+        heading.style.marginTop = '0';
+        
+        const reportPre = document.createElement('pre');
+        reportPre.textContent = reportString;
+        reportPre.style.cssText = `
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-size: 12px;
+            max-height: 500px;
+            overflow: auto;
+        `;
+        
+        const copyButton = document.createElement('button');
+        copyButton.textContent = 'Copy to Clipboard';
+        copyButton.style.cssText = `
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            cursor: pointer;
+        `;
+        copyButton.addEventListener('click', () => {
+            navigator.clipboard.writeText(reportString)
+                .then(() => {
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyButton.textContent = 'Copy to Clipboard';
+                    }, 2000);
+                })
+                .catch(err => {
+                    log('error', `Error copying to clipboard: ${err.message}`);
+                    copyButton.textContent = 'Error copying';
+                });
+        });
+        
+        const closeButton = document.createElement('button');
+        closeButton.textContent = 'Close';
+        closeButton.style.cssText = `
+            padding: 8px 16px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        `;
+        closeButton.addEventListener('click', () => {
+            document.body.removeChild(modalContainer);
+        });
+        
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = `
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 20px;
+        `;
+        buttonContainer.appendChild(copyButton);
+        buttonContainer.appendChild(closeButton);
+        
+        modal.appendChild(heading);
+        modal.appendChild(reportPre);
+        modal.appendChild(buttonContainer);
+        modalContainer.appendChild(modal);
+        
+        document.body.appendChild(modalContainer);
+    }
+
+    /**
+     * Find and monitor shadow DOM elements
+     * @param {Node} root - Root node to start scanning from
+     */
+    function findShadowRoots(root = document.documentElement) {
+        if (!settings.dynamicSelectors || !settings.dynamicSelectors.detectShadowDOM) {
+            return;
+        }
+        
+        const elements = root.querySelectorAll('*');
+        
+        for (const element of elements) {
+            // Check if element has shadow root
+            if (element.shadowRoot && !shadowRoots.has(element.shadowRoot)) {
+                shadowRoots.add(element.shadowRoot);
+                log('debug', 'Found shadow root:', element);
+                
+                // Apply extreme mode to shadow DOM if active
+                if (extremeModeActive) {
+                    applyShadowDomExtremeDark(element.shadowRoot);
+                }
+                
+                // Continue scanning inside shadow DOM
+                findShadowRoots(element.shadowRoot);
+                
+                // Set up observer for changes within shadow DOM
+                observeShadowDom(element.shadowRoot);
+            }
+        }
+    }
+
+    /**
+     * Observe shadow DOM for changes
+     * @param {ShadowRoot} shadowRoot - Shadow root to observe
+     */
+    function observeShadowDom(shadowRoot) {
+        if (!shadowRoot) return;
+        
+        try {
+            const observer = new MutationObserver(mutations => {
+                // Check for new shadow roots
+                for (const mutation of mutations) {
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        for (const node of mutation.addedNodes) {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                findShadowRoots(node);
+                                
+                                // Apply extreme dark mode to new elements if active
+                                if (extremeModeActive) {
+                                    applyExtremeDarkToElement(node);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            observer.observe(shadowRoot, {
+                childList: true,
+                subtree: true
+            });
+        } catch (error) {
+            log('error', `Error observing shadow DOM: ${error.message}`, shadowRoot);
+        }
+    }
+
+    /**
+     * Apply extreme dark mode to shadow DOM
+     * @param {ShadowRoot} shadowRoot - Shadow root to process
+     */
+    function applyShadowDomExtremeDark(shadowRoot) {
+        if (!shadowRoot) return;
+        
+        try {
+            // Inject styles into shadow DOM
+            const style = document.createElement('style');
+            style.textContent = `
+                * {
+                    background-color: #1a1a1a !important;
+                    color: #ddd !important;
+                    border-color: #444 !important;
+                }
+                a, a:visited {
+                    color: #3a8ee6 !important;
+                }
+                input, textarea, select, button {
+                    background-color: #2d2d2d !important;
+                    color: #ddd !important;
+                }
+            `;
+            shadowRoot.appendChild(style);
+            
+            // Track this style
+            customStyleElements.push(style);
+            
+            log('debug', 'Applied extreme dark mode to shadow DOM', shadowRoot);
+        } catch (error) {
+            log('error', `Error applying extreme dark to shadow DOM: ${error.message}`, shadowRoot);
+        }
+    }
+
+    /**
+     * Apply extreme dark mode to a specific element and its children
+     * @param {Element} element - Element to process
+     */
+    function applyExtremeDarkToElement(element) {
+        if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
+        
+        try {
+            // Store original styles
+            if (!originalStyles.has(element)) {
+                originalStyles.set(element, element.getAttribute('style') || '');
+            }
+            
+            // Apply dark styles
+            let currentStyle = element.getAttribute('style') || '';
+            let newStyle = currentStyle + '; background-color: #1a1a1a !important; color: #ddd !important; border-color: #444 !important;';
+            element.setAttribute('style', newStyle);
+            
+            // Process all child elements
+            Array.from(element.children).forEach(child => {
+                applyExtremeDarkToElement(child);
+            });
+            
+            forcedElementsCount++;
+        } catch (error) {
+            log('error', `Error applying extreme dark to element: ${error.message}`, element);
+        }
+    }
+
+    /**
+     * Perform a deep scan of the document to apply extreme dark mode
+     */
+    function performDeepScan() {
+        if (!settings.dynamicSelectors || !settings.dynamicSelectors.deepScan || !extremeModeActive) {
+            return;
+        }
+        
+        log('info', 'Performing deep scan for extreme dark mode');
+        
+        try {
+            // Find all elements
+            const elements = document.querySelectorAll('body *');
+            
+            // Get computed background colors
+            for (const element of elements) {
+                const computedStyle = window.getComputedStyle(element);
+                const backgroundColor = computedStyle.backgroundColor;
+                const color = computedStyle.color;
+                
+                // Check if element has light background and dark text
+                if (isLightColor(backgroundColor) && isDarkColor(color)) {
+                    // Store original styles
+                    if (!originalStyles.has(element)) {
+                        originalStyles.set(element, element.getAttribute('style') || '');
+                    }
+                    
+                    // Force dark background and light text
+                    let currentStyle = element.getAttribute('style') || '';
+                    let newStyle = currentStyle + '; background-color: #1a1a1a !important; color: #ddd !important;';
+                    element.setAttribute('style', newStyle);
+                    forcedElementsCount++;
+                }
+                
+                // Look for problematic fixed elements (lightboxes, modals, etc.)
+                if (computedStyle.position === 'fixed' || computedStyle.position === 'sticky') {
+                    if (isLightColor(backgroundColor)) {
+                        // Force dark background for fixed elements
+                        let currentStyle = element.getAttribute('style') || '';
+                        let newStyle = currentStyle + '; background-color: #1a1a1a !important;';
+                        element.setAttribute('style', newStyle);
+                        forcedElementsCount++;
+                    }
+                }
+            }
+            
+            // Also check shadow DOM
+            shadowRoots.forEach(root => {
+                try {
+                    const shadowElements = root.querySelectorAll('*');
+                    
+                    for (const element of shadowElements) {
+                        const computedStyle = window.getComputedStyle(element);
+                        const backgroundColor = computedStyle.backgroundColor;
+                        const color = computedStyle.color;
+                        
+                        if (isLightColor(backgroundColor) && isDarkColor(color)) {
+                            let currentStyle = element.getAttribute('style') || '';
+                            let newStyle = currentStyle + '; background-color: #1a1a1a !important; color: #ddd !important;';
+                            element.setAttribute('style', newStyle);
+                            forcedElementsCount++;
+                        }
+                    }
+                } catch (error) {
+                    log('debug', `Error processing shadow DOM elements: ${error.message}`, root);
+                }
+            });
+            
+            log('info', `Deep scan completed, processed ${forcedElementsCount} elements`);
+        } catch (error) {
+            log('error', `Error during deep scan: ${error.message}`);
+        }
+    }
+
+    /**
+     * Check if a color is light
+     * @param {string} color - CSS color value
+     * @return {boolean} Whether color is light
+     */
+    function isLightColor(color) {
+        // Process color string to get RGB values
+        let r, g, b;
+        
+        if (color.startsWith('rgb')) {
+            const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+            if (match) {
+                [, r, g, b] = match.map(Number);
+            } else {
+                return false;
+            }
+        } else if (color.startsWith('#')) {
+            // Convert hex to RGB
+            let hex = color.substring(1);
+            if (hex.length === 3) {
+                hex = hex.split('').map(c => c + c).join('');
+            }
+            r = parseInt(hex.substring(0, 2), 16);
+            g = parseInt(hex.substring(2, 4), 16);
+            b = parseInt(hex.substring(4, 6), 16);
+        } else if (color === 'transparent' || color === 'rgba(0, 0, 0, 0)') {
+            return false;
+        } else {
+            // For named colors, we'd need a mapping, but for simplicity
+            // we'll just return false for unsupported formats
+            return false;
+        }
+        
+        // Calculate luminance - lighter colors have higher values
+        // Formula: 0.299*R + 0.587*G + 0.114*B
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        
+        // Luminance threshold (0.5 - 0.6 is a common range)
+        return luminance > 0.55;
+    }
+
+    /**
+     * Check if a color is dark
+     * @param {string} color - CSS color value
+     * @return {boolean} Whether color is dark
+     */
+    function isDarkColor(color) {
+        return !isLightColor(color);
+    }
+
+    /**
      * ------------------------
      * STORAGE MANAGEMENT
      * ------------------------
@@ -220,12 +1023,17 @@
                 darkModeEnabled = typeof storedSettings.darkModeEnabled === 'boolean' 
                     ? storedSettings.darkModeEnabled 
                     : false;
-                console.log(`Loaded per-site settings for ${getCurrentSiteIdentifier()}:`, storedSettings);
+                
+                // Load custom CSS for this site if available
+                const customCssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
+                currentSiteCustomCSS = await GM.getValue(customCssKey, '');
+                
+                log('info', `Loaded per-site settings for ${getCurrentSiteIdentifier()}:`, storedSettings);
             } else {
-                console.log(`No per-site settings found for ${getCurrentSiteIdentifier()}. Using global settings.`);
+                log('info', `No per-site settings found for ${getCurrentSiteIdentifier()}. Using global settings.`);
             }
         } catch (error) {
-            console.error(`Failed to load per-site settings:`, error);
+            log('error', `Failed to load per-site settings:`, error);
         }
     }
 
@@ -239,14 +1047,23 @@
             brightness: settings.brightness,
             contrast: settings.contrast,
             sepia: settings.sepia,
-            darkModeEnabled: darkModeEnabled
+            darkModeEnabled: darkModeEnabled,
+            // Save extreme mode state for this site
+            extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
         };
         
         try {
             await GM.setValue(siteKey, perSiteSettings);
-            console.log(`Saved per-site settings for ${getCurrentSiteIdentifier()}:`, perSiteSettings);
+            
+            // Save custom CSS for this site if it exists
+            if (currentSiteCustomCSS) {
+                const customCssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
+                await GM.setValue(customCssKey, currentSiteCustomCSS);
+            }
+            
+            log('info', `Saved per-site settings for ${getCurrentSiteIdentifier()}:`, perSiteSettings);
         } catch (error) {
-            console.error(`Failed to save per-site settings:`, error);
+            log('error', `Failed to save per-site settings:`, error);
         }
     }
 
@@ -259,25 +1076,38 @@
             const storedSettings = await GM.getValue(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
             settings = { ...DEFAULT_SETTINGS, ...storedSettings };
             
+            // Ensure arrays and objects exist with defaults
             if (!Array.isArray(settings.exclusionList)) {
                 settings.exclusionList = [];
             }
             
-            // Ensure scheduledDarkMode settings exist
             if (!settings.scheduledDarkMode) {
                 settings.scheduledDarkMode = DEFAULT_SETTINGS.scheduledDarkMode;
             }
             
-            // Ensure keyboard shortcut settings exist
             if (!settings.keyboardShortcut) {
                 settings.keyboardShortcut = DEFAULT_SETTINGS.keyboardShortcut;
             }
             
+            // Ensure new settings exist
+            if (!settings.extremeMode) {
+                settings.extremeMode = DEFAULT_SETTINGS.extremeMode;
+            }
+            
+            if (!settings.dynamicSelectors) {
+                settings.dynamicSelectors = DEFAULT_SETTINGS.dynamicSelectors;
+            }
+            
+            if (!settings.diagnostics) {
+                settings.diagnostics = DEFAULT_SETTINGS.diagnostics;
+            }
+            
             updateButtonPosition();
+            log('info', 'Settings loaded successfully');
         } catch (error) {
-            console.error('Failed to load settings:', error);
+            log('error', 'Failed to load settings:', error);
             settings = { ...DEFAULT_SETTINGS };
-            console.warn('Using default settings due to load failure.');
+            log('warn', 'Using default settings due to load failure.');
         }
     }
 
@@ -293,8 +1123,13 @@
             
             // Update schedule checking if needed
             setupScheduleChecking();
+            
+            // Update dynamic selector scanning if needed
+            setupDynamicScanning();
+            
+            log('debug', 'Settings saved successfully');
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            log('error', 'Failed to save settings:', error);
         }
     }, 250);
 
@@ -314,6 +1149,7 @@
         if (confirm('Are you sure you want to reset settings to default? This will clear ALL settings.')) {
             try {
                 const siteKeys = [];
+                const customCssKeys = [];
                 
                 // Find all per-site settings keys
                 const allKeys = await GM.listValues ? GM.listValues() : [];
@@ -321,12 +1157,19 @@
                     allKeys.forEach(key => {
                         if (key.startsWith(STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX)) {
                             siteKeys.push(key);
+                        } else if (key.startsWith(STORAGE_KEYS.CUSTOM_CSS_PREFIX)) {
+                            customCssKeys.push(key);
                         }
                     });
                 }
                 
                 // Delete all per-site settings
                 for (const key of siteKeys) {
+                    await GM.deleteValue(key);
+                }
+                
+                // Delete all custom CSS
+                for (const key of customCssKeys) {
                     await GM.deleteValue(key);
                 }
 
@@ -336,6 +1179,32 @@
                 await GM.setValue(STORAGE_KEYS.DARK_MODE, false);
                 
                 darkModeEnabled = false;
+                currentSiteCustomCSS = '';
+
+                // Clean up any injected styles
+                customStyleElements.forEach(style => {
+                    try {
+                        style.remove();
+                    } catch (e) {
+                        // Ignore errors
+                    }
+                });
+                customStyleElements = [];
+                
+                // Reset original styles
+                for (const [element, originalStyle] of originalStyles.entries()) {
+                    try {
+                        if (originalStyle) {
+                            element.setAttribute('style', originalStyle);
+                        } else {
+                            element.removeAttribute('style');
+                        }
+                    } catch (e) {
+                        // Ignore errors for elements that might have been removed
+                    }
+                }
+                originalStyles.clear();
+                forcedElementsCount = 0;
 
                 // Update UI to reflect changes
                 updateButtonPosition();
@@ -346,13 +1215,14 @@
                 toggleDarkMode(false);
                 await savePerSiteSettings();
                 
-                // Reset schedule checking
+                // Reset intervals
                 setupScheduleChecking();
+                setupDynamicScanning();
 
                 alert('All settings have been reset to defaults.');
 
             } catch (error) {
-                console.error("Error during reset:", error);
+                log('error', "Error during reset:", error);
                 alert("An error occurred during settings reset. Please check the console.");
             }
         }
@@ -365,6 +1235,8 @@
         try {
             // Get all per-site settings
             const perSiteSettings = {};
+            const customCssSettings = {};
+            
             const allKeys = await GM.listValues ? GM.listValues() : [];
             
             if (Array.isArray(allKeys)) {
@@ -372,6 +1244,9 @@
                     if (key.startsWith(STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX)) {
                         const siteData = await GM.getValue(key);
                         perSiteSettings[key] = siteData;
+                    } else if (key.startsWith(STORAGE_KEYS.CUSTOM_CSS_PREFIX)) {
+                        const cssData = await GM.getValue(key);
+                        customCssSettings[key] = cssData;
                     }
                 }
             }
@@ -379,8 +1254,9 @@
             const exportData = {
                 global: settings,
                 perSite: perSiteSettings,
+                customCss: customCssSettings,
                 darkModeEnabled: darkModeEnabled,
-                version: '2.5.0'
+                version: '3.0.0'
             };
             
             const jsonString = JSON.stringify(exportData, null, 2);
@@ -399,7 +1275,7 @@
             }, 100);
             
         } catch (error) {
-            console.error('Failed to export settings:', error);
+            log('error', 'Failed to export settings:', error);
             alert('Failed to export settings. See console for details.');
         }
     }
@@ -437,6 +1313,19 @@
                         }
                     }
                     
+                    // Import custom CSS settings
+                    if (importData.customCss) {
+                        for (const [key, value] of Object.entries(importData.customCss)) {
+                            await GM.setValue(key, value);
+                            
+                            // Update current site custom CSS if relevant
+                            const currentSiteKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
+                            if (key === currentSiteKey) {
+                                currentSiteCustomCSS = value;
+                            }
+                        }
+                    }
+                    
                     // Update UI to reflect imported settings
                     updateButtonPosition();
                     updateDarkReaderConfig();
@@ -444,11 +1333,17 @@
                     updateButtonState();
                     updateExclusionListDisplay();
                     setupScheduleChecking();
+                    setupDynamicScanning();
+                    
+                    // Re-apply dark mode if needed
+                    if (darkModeEnabled) {
+                        toggleDarkMode(true);
+                    }
                     
                     alert('Settings imported successfully!');
                     
                 } catch (parseError) {
-                    console.error('Failed to parse settings file:', parseError);
+                    log('error', 'Failed to parse settings file:', parseError);
                     alert('Failed to import settings: Invalid file format');
                 }
             };
@@ -456,7 +1351,7 @@
             reader.readAsText(file);
             
         } catch (error) {
-            console.error('Failed to import settings:', error);
+            log('error', 'Failed to import settings:', error);
             alert('Failed to import settings. See console for details.');
         }
     }
@@ -480,19 +1375,38 @@
 
         if (darkModeEnabled) {
             if (!isSiteExcluded(window.location.href)) {
+                extremeModeActive = settings.extremeMode && settings.extremeMode.enabled;
+                
+                // Apply regular dark mode first
                 updateDarkReaderConfig();
+                
+                // Apply extreme mode if enabled
+                if (extremeModeActive) {
+                    applyExtremeMode();
+                }
+                
+                // Apply site-specific fixes if needed
+                applyProblematicSiteFixes();
+                
+                // Apply custom CSS if it exists
+                if (currentSiteCustomCSS && (extremeModeActive || settings.extremeMode.useCustomCSS)) {
+                    injectCustomCSS(currentSiteCustomCSS, 'custom-site-css');
+                }
+                
                 await GM.setValue(STORAGE_KEYS.DARK_MODE, true);
-                console.log('Dark mode enabled.');
+                log('info', 'Dark mode enabled' + (extremeModeActive ? ' with extreme mode' : ''));
             } else {
                 darkModeEnabled = false;
                 DarkReader.disable();
+                removeExtremeMode();
                 await GM.setValue(STORAGE_KEYS.DARK_MODE, false);
-                console.log('Site excluded. Dark mode disabled.');
+                log('info', 'Site excluded. Dark mode disabled.');
             }
         } else {
             DarkReader.disable();
+            removeExtremeMode();
             await GM.setValue(STORAGE_KEYS.DARK_MODE, false);
-            console.log('Dark mode disabled.');
+            log('info', 'Dark mode disabled.');
         }
         
         updateButtonState();
@@ -504,17 +1418,149 @@
      */
     function updateDarkReaderConfig() {
         if (darkModeEnabled && !isSiteExcluded(window.location.href)) {
-            DarkReader.enable({
+            const config = {
                 brightness: settings.brightness,
                 contrast: settings.contrast,
                 sepia: settings.sepia,
                 style: {
                     fontFamily: settings.fontFamily
                 }
-            });
+            };
+            
+            // Add extreme mode settings
+            if (settings.extremeMode && settings.extremeMode.enabled) {
+                config.ignoreImageAnalysis = settings.extremeMode.ignoreImageAnalysis;
+                // Fine-tune algorithm for better compatibility
+                config.mode = 1; // 0 = classic, 1 = dynamic
+                config.spreadExtremeMode = 50;
+            }
+            
+            DarkReader.enable(config);
         } else {
             DarkReader.disable();
         }
+    }
+
+    /**
+     * Apply extreme mode styles
+     */
+    function applyExtremeMode() {
+        if (!settings.extremeMode || !settings.extremeMode.enabled) {
+            return;
+        }
+        
+        extremeModeActive = true;
+        log('info', 'Applying extreme mode');
+        
+        // Inject global CSS for extreme mode
+        const extremeCss = `
+            html, body {
+                background-color: #121212 !important;
+                color: #ddd !important;
+            }
+            
+            /* Force light text for paragraphs and headings */
+            p, h1, h2, h3, h4, h5, h6, span, label, li, td, th {
+                color: #ddd !important;
+            }
+            
+            /* Dark inputs, textareas, and selects */
+            input, textarea, select {
+                background-color: #2d2d2d !important;
+                color: #ddd !important;
+                border-color: #444 !important;
+            }
+            
+            /* Button styling */
+            button, [role="button"], .button, [type="button"], [type="submit"] {
+                background-color: #2d2d2d !important;
+                color: #ddd !important;
+                border-color: #555 !important;
+            }
+            
+            /* Links */
+            a, a:visited {
+                color: #3a8ee6 !important;
+            }
+            
+            /* Force backgrounds for common UI components */
+            [class*="dialog"], [class*="modal"], [class*="popup"], [class*="tooltip"],
+            [class*="menu"], [class*="drawer"], [class*="sidebar"], [class*="panel"],
+            [role="dialog"], [role="alert"], [role="alertdialog"], [role="menu"] {
+                background-color: #1a1a1a !important;
+                color: #ddd !important;
+                border-color: #444 !important;
+            }
+            
+            /* Force fixed and sticky elements to be dark */
+            [style*="position: fixed"], [style*="position:fixed"],
+            [style*="position: sticky"], [style*="position:sticky"] {
+                background-color: #1a1a1a !important;
+            }
+        `;
+        
+        injectCustomCSS(extremeCss, 'extreme-mode-css');
+        
+        // If forced elements is enabled, scan and force dark mode on elements
+        if (settings.extremeMode.forceDarkElements) {
+            // Force body and main content areas
+            forceElementStyles('body', { 
+                backgroundColor: '#121212 !important', 
+                color: '#ddd !important' 
+            });
+            
+            forceElementStyles('main, article, section, [role="main"]', { 
+                backgroundColor: '#1a1a1a !important', 
+                color: '#ddd !important' 
+            });
+            
+            // Force fixed elements that may be problematic
+            forceElementStyles('header, nav, footer, aside, [role="banner"], [role="navigation"], [role="complementary"]', {
+                backgroundColor: '#1a1a1a !important',
+                color: '#ddd !important'
+            });
+            
+            // Find and apply to shadow DOMs
+            findShadowRoots();
+            
+            // Perform a deep scan if enabled
+            if (settings.dynamicSelectors && settings.dynamicSelectors.deepScan) {
+                performDeepScan();
+            }
+        }
+    }
+
+    /**
+     * Remove extreme mode styles
+     */
+    function removeExtremeMode() {
+        extremeModeActive = false;
+        log('info', 'Removing extreme mode');
+        
+        // Remove injected style elements
+        customStyleElements.forEach(style => {
+            try {
+                style.remove();
+            } catch (e) {
+                // Ignore errors
+            }
+        });
+        customStyleElements = [];
+        
+        // Restore original styles
+        for (const [element, originalStyle] of originalStyles.entries()) {
+            try {
+                if (originalStyle) {
+                    element.setAttribute('style', originalStyle);
+                } else {
+                    element.removeAttribute('style');
+                }
+            } catch (e) {
+                // Ignore errors for elements that might have been removed
+            }
+        }
+        originalStyles.clear();
+        forcedElementsCount = 0;
     }
 
     /**
@@ -548,7 +1594,7 @@
         
         // Only toggle if the current state doesn't match what it should be
         if (shouldBeDark !== darkModeEnabled) {
-            console.log(`Scheduled dark mode: Setting to ${shouldBeDark ? 'enabled' : 'disabled'}`);
+            log('info', `Scheduled dark mode: Setting to ${shouldBeDark ? 'enabled' : 'disabled'}`);
             toggleDarkMode(shouldBeDark);
         }
     }
@@ -572,6 +1618,39 @@
             scheduleCheckInterval = setInterval(checkScheduledDarkMode, 60000);
         }
     }
+
+    /**
+     * Setup dynamic scanning interval
+     */
+    function setupDynamicScanning() {
+        // Clear any existing interval
+        if (dynamicScanInterval) {
+            clearInterval(dynamicScanInterval);
+            dynamicScanInterval = null;
+        }
+        
+        // If dynamic selectors are enabled, set up the scanning interval
+        if (settings.dynamicSelectors && settings.dynamicSelectors.enabled) {
+            // Set up interval based on configured scan interval
+            const scanInterval = settings.dynamicSelectors.scanInterval || 2000;
+            
+            dynamicScanInterval = setInterval(() => {
+                // Find shadow DOM elements
+                if (settings.dynamicSelectors.detectShadowDOM) {
+                    findShadowRoots();
+                }
+                
+                // If dark mode and extreme mode are both active, perform deep scan
+                if (darkModeEnabled && extremeModeActive && settings.dynamicSelectors.deepScan) {
+                    // Use throttled deep scan for performance
+                    throttledDeepScan();
+                }
+            }, scanInterval);
+        }
+    }
+
+    // Throttle deep scan to avoid performance issues
+    const throttledDeepScan = throttle(performDeepScan, 5000);
 
     /**
      * Apply a theme preset to the current settings
@@ -810,6 +1889,186 @@
         
         ui.appendChild(darkModeSection);
 
+        // Extreme Mode section (new)
+        const extremeModeSection = createSettingSection('Extreme Mode');
+        
+        // Extreme mode toggle
+        uiElements.extremeModeToggle = document.createElement('input');
+        uiElements.extremeModeToggle.type = 'checkbox';
+        uiElements.extremeModeToggle.id = ELEMENT_IDS.EXTREME_MODE_TOGGLE;
+        uiElements.extremeModeToggle.checked = settings.extremeMode && settings.extremeMode.enabled;
+        uiElements.extremeModeToggle.addEventListener('change', (e) => {
+            if (!settings.extremeMode) {
+                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
+            }
+            settings.extremeMode.enabled = e.target.checked;
+            saveSettings();
+            
+            // Update dark mode immediately if it's enabled
+            if (darkModeEnabled) {
+                toggleDarkMode(true);
+            }
+        });
+        
+        extremeModeSection.appendChild(createFormGroup(
+            createLabel('Enable Extreme Mode:'), 
+            uiElements.extremeModeToggle
+        ));
+        
+        // Force dark elements toggle
+        uiElements.forceDarkToggle = document.createElement('input');
+        uiElements.forceDarkToggle.type = 'checkbox';
+        uiElements.forceDarkToggle.id = ELEMENT_IDS.FORCE_DARK_TOGGLE;
+        uiElements.forceDarkToggle.checked = settings.extremeMode && settings.extremeMode.forceDarkElements;
+        uiElements.forceDarkToggle.addEventListener('change', (e) => {
+            if (!settings.extremeMode) {
+                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
+            }
+            settings.extremeMode.forceDarkElements = e.target.checked;
+            saveSettings();
+        });
+        
+        extremeModeSection.appendChild(createFormGroup(
+            createLabel('Force Dark Elements:'), 
+            uiElements.forceDarkToggle
+        ));
+        
+        // Custom CSS toggle
+        uiElements.customCssToggle = document.createElement('input');
+        uiElements.customCssToggle.type = 'checkbox';
+        uiElements.customCssToggle.id = 'customCssToggle';
+        uiElements.customCssToggle.checked = settings.extremeMode && settings.extremeMode.useCustomCSS;
+        uiElements.customCssToggle.addEventListener('change', (e) => {
+            if (!settings.extremeMode) {
+                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
+            }
+            settings.extremeMode.useCustomCSS = e.target.checked;
+            saveSettings();
+        });
+        
+        extremeModeSection.appendChild(createFormGroup(
+            createLabel('Use Custom CSS:'), 
+            uiElements.customCssToggle
+        ));
+        
+        // Custom CSS textarea
+        uiElements.customCssTextarea = document.createElement('textarea');
+        uiElements.customCssTextarea.id = ELEMENT_IDS.CUSTOM_CSS_TEXTAREA;
+        uiElements.customCssTextarea.setAttribute('aria-label', 'Custom CSS');
+        uiElements.customCssTextarea.setAttribute('placeholder', 'Enter custom CSS for this site...');
+        uiElements.customCssTextarea.value = currentSiteCustomCSS || '';
+        uiElements.customCssTextarea.rows = 6;
+        uiElements.customCssTextarea.addEventListener('change', (e) => {
+            currentSiteCustomCSS = e.target.value;
+            savePerSiteSettings();
+            
+            // Apply custom CSS if dark mode is enabled
+            if (darkModeEnabled && (extremeModeActive || settings.extremeMode.useCustomCSS)) {
+                injectCustomCSS(currentSiteCustomCSS, 'custom-site-css');
+            }
+        });
+        
+        extremeModeSection.appendChild(createFormGroup(
+            createLabel('Custom CSS for This Site:'), 
+            uiElements.customCssTextarea
+        ));
+        
+        // Add explanation
+        const extremeModeExplanation = document.createElement('p');
+        extremeModeExplanation.className = 'info-text';
+        extremeModeExplanation.textContent = 'Extreme mode forces dark theme on resistant websites. May affect performance.';
+        extremeModeSection.appendChild(extremeModeExplanation);
+        
+        ui.appendChild(extremeModeSection);
+
+        // Dynamic Selectors section (new)
+        const dynamicSelectorsSection = createSettingSection('Advanced Compatibility');
+        
+        // Dynamic selectors toggle
+        uiElements.dynamicSelectorsToggle = document.createElement('input');
+        uiElements.dynamicSelectorsToggle.type = 'checkbox';
+        uiElements.dynamicSelectorsToggle.id = ELEMENT_IDS.DYNAMIC_SELECTORS_TOGGLE;
+        uiElements.dynamicSelectorsToggle.checked = settings.dynamicSelectors && settings.dynamicSelectors.enabled;
+        uiElements.dynamicSelectorsToggle.addEventListener('change', (e) => {
+            if (!settings.dynamicSelectors) {
+                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
+            }
+            settings.dynamicSelectors.enabled = e.target.checked;
+            saveSettings();
+            setupDynamicScanning();
+        });
+        
+        dynamicSelectorsSection.appendChild(createFormGroup(
+            createLabel('Dynamic Monitoring:'), 
+            uiElements.dynamicSelectorsToggle
+        ));
+        
+        // Shadow DOM detection toggle
+        uiElements.shadowDomToggle = document.createElement('input');
+        uiElements.shadowDomToggle.type = 'checkbox';
+        uiElements.shadowDomToggle.id = 'shadowDomToggle';
+        uiElements.shadowDomToggle.checked = settings.dynamicSelectors && settings.dynamicSelectors.detectShadowDOM;
+        uiElements.shadowDomToggle.addEventListener('change', (e) => {
+            if (!settings.dynamicSelectors) {
+                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
+            }
+            settings.dynamicSelectors.detectShadowDOM = e.target.checked;
+            saveSettings();
+            
+            // Clear and rebuild shadow root set if needed
+            if (e.target.checked) {
+                shadowRoots.clear();
+                findShadowRoots();
+            }
+        });
+        
+        dynamicSelectorsSection.appendChild(createFormGroup(
+            createLabel('Shadow DOM Support:'), 
+            uiElements.shadowDomToggle
+        ));
+        
+        // Deep scan toggle
+        uiElements.deepScanToggle = document.createElement('input');
+        uiElements.deepScanToggle.type = 'checkbox';
+        uiElements.deepScanToggle.id = 'deepScanToggle';
+        uiElements.deepScanToggle.checked = settings.dynamicSelectors && settings.dynamicSelectors.deepScan;
+        uiElements.deepScanToggle.addEventListener('change', (e) => {
+            if (!settings.dynamicSelectors) {
+                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
+            }
+            settings.dynamicSelectors.deepScan = e.target.checked;
+            saveSettings();
+        });
+        
+        dynamicSelectorsSection.appendChild(createFormGroup(
+            createLabel('Enable Deep Scanning:'), 
+            uiElements.deepScanToggle
+        ));
+        
+        // Scan interval input
+        uiElements.scanIntervalInput = createNumberInput('scanIntervalInput', 'Scan Interval (ms)', 
+            settings.dynamicSelectors ? settings.dynamicSelectors.scanInterval : DEFAULT_SETTINGS.dynamicSelectors.scanInterval, (e) => {
+            if (!settings.dynamicSelectors) {
+                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
+            }
+            settings.dynamicSelectors.scanInterval = Math.max(1000, parseInt(e.target.value));
+            saveSettings();
+            setupDynamicScanning();
+        });
+        
+        dynamicSelectorsSection.appendChild(createFormGroup(
+            createLabel('Scan Interval (ms):'), 
+            uiElements.scanIntervalInput
+        ));
+        
+        // Add explanation
+        const dynamicExplanation = document.createElement('p');
+        dynamicExplanation.className = 'info-text';
+        dynamicExplanation.textContent = 'These settings improve compatibility with dynamic websites but may affect performance.';
+        dynamicSelectorsSection.appendChild(dynamicExplanation);
+        
+        ui.appendChild(dynamicSelectorsSection);
+
         // Scheduled dark mode section
         const scheduleSection = createSettingSection('Schedule Dark Mode');
         
@@ -961,6 +2220,66 @@
         
         ui.appendChild(exclusionsSection);
 
+        // Diagnostics section (new)
+        const diagnosticsSection = createSettingSection('Diagnostics');
+        
+        // Diagnostics enabled toggle
+        uiElements.diagnosticsToggle = document.createElement('input');
+        uiElements.diagnosticsToggle.type = 'checkbox';
+        uiElements.diagnosticsToggle.id = 'diagnosticsToggle';
+        uiElements.diagnosticsToggle.checked = settings.diagnostics && settings.diagnostics.enabled;
+        uiElements.diagnosticsToggle.addEventListener('change', (e) => {
+            if (!settings.diagnostics) {
+                settings.diagnostics = { ...DEFAULT_SETTINGS.diagnostics };
+            }
+            settings.diagnostics.enabled = e.target.checked;
+            saveSettings();
+        });
+        
+        diagnosticsSection.appendChild(createFormGroup(
+            createLabel('Enable Diagnostics:'), 
+            uiElements.diagnosticsToggle
+        ));
+        
+        // Log level select
+        uiElements.logLevelSelect = document.createElement('select');
+        uiElements.logLevelSelect.id = 'logLevelSelect';
+        uiElements.logLevelSelect.setAttribute('aria-label', 'Log Level');
+        
+        const logLevels = ['error', 'warn', 'info', 'debug'];
+        logLevels.forEach(level => {
+            const option = document.createElement('option');
+            option.value = level;
+            option.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+            option.selected = settings.diagnostics && settings.diagnostics.logLevel === level;
+            uiElements.logLevelSelect.appendChild(option);
+        });
+        
+        uiElements.logLevelSelect.addEventListener('change', (e) => {
+            if (!settings.diagnostics) {
+                settings.diagnostics = { ...DEFAULT_SETTINGS.diagnostics };
+            }
+            settings.diagnostics.logLevel = e.target.value;
+            saveSettings();
+        });
+        
+        diagnosticsSection.appendChild(createFormGroup(
+            createLabel('Log Level:'), 
+            uiElements.logLevelSelect
+        ));
+        
+        // Show diagnostics button
+        const showDiagnosticsButton = createButton(ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON, 'Show Diagnostic Report', showDiagnosticReport);
+        diagnosticsSection.appendChild(showDiagnosticsButton);
+        
+        // Add explanation
+        const diagnosticsExplanation = document.createElement('p');
+        diagnosticsExplanation.className = 'info-text';
+        diagnosticsExplanation.textContent = 'Diagnostics help identify and fix issues with specific websites.';
+        diagnosticsSection.appendChild(diagnosticsExplanation);
+        
+        ui.appendChild(diagnosticsSection);
+
         // Import/Export section
         const importExportSection = createSettingSection('Import/Export');
         
@@ -1002,7 +2321,7 @@
         // Version info
         const versionInfo = document.createElement('div');
         versionInfo.className = 'version-info';
-        versionInfo.textContent = 'Dark Mode Toggle v2.5.0';
+        versionInfo.textContent = 'Enhanced Dark Mode Toggle v3.0.0';
         ui.appendChild(versionInfo);
 
         document.body.appendChild(ui);
@@ -1160,6 +2479,10 @@
         if (existingButton) return;
         
         const toggleUIButton = createButton(ELEMENT_IDS.TOGGLE_UI_BUTTON, 'Settings', toggleUI);
+        toggleUIButton.innerHTML = SVG_ICONS.GEAR;
+        toggleUIButton.setAttribute('aria-label', 'Dark Mode Settings');
+        toggleUIButton.setAttribute('title', 'Dark Mode Settings');
+        
         document.body.appendChild(toggleUIButton);
         updateSettingsButtonPosition();
     }
@@ -1216,11 +2539,33 @@
             uiElements.settingsButtonOffsetInput.value = settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset;
         }
         
+        // Update extreme mode values
+        if (uiElements.extremeModeToggle && settings.extremeMode) {
+            uiElements.extremeModeToggle.checked = settings.extremeMode.enabled;
+            uiElements.forceDarkToggle.checked = settings.extremeMode.forceDarkElements;
+            uiElements.customCssToggle.checked = settings.extremeMode.useCustomCSS;
+            uiElements.customCssTextarea.value = currentSiteCustomCSS || '';
+        }
+        
+        // Update dynamic selectors values
+        if (uiElements.dynamicSelectorsToggle && settings.dynamicSelectors) {
+            uiElements.dynamicSelectorsToggle.checked = settings.dynamicSelectors.enabled;
+            uiElements.shadowDomToggle.checked = settings.dynamicSelectors.detectShadowDOM;
+            uiElements.deepScanToggle.checked = settings.dynamicSelectors.deepScan;
+            uiElements.scanIntervalInput.value = settings.dynamicSelectors.scanInterval;
+        }
+        
         // Update scheduled dark mode values
         if (uiElements.scheduleEnabledToggle && settings.scheduledDarkMode) {
             uiElements.scheduleEnabledToggle.checked = settings.scheduledDarkMode.enabled;
             uiElements.scheduleStartTime.value = settings.scheduledDarkMode.startTime;
             uiElements.scheduleEndTime.value = settings.scheduledDarkMode.endTime;
+        }
+        
+        // Update diagnostics values
+        if (uiElements.diagnosticsToggle && settings.diagnostics) {
+            uiElements.diagnosticsToggle.checked = settings.diagnostics.enabled;
+            uiElements.logLevelSelect.value = settings.diagnostics.logLevel;
         }
         
         updateExclusionListDisplay();
@@ -1279,6 +2624,8 @@
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
                 position: fixed;
                 outline: none;
+                /* Enhanced z-index to ensure visibility */
+                z-index: 2147483646;
             }
 
             #${ELEMENT_IDS.BUTTON}:hover {
@@ -1330,7 +2677,7 @@
                 border: 1px solid rgba(0, 0, 0, 0.1);
                 padding: 15px;
                 padding-top: 0;
-                z-index: 9998;
+                z-index: 2147483647; /* Maximum z-index to ensure visibility */
                 border-radius: 8px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 display: none;
@@ -1339,7 +2686,7 @@
                 max-width: 90vw;
                 max-height: 80vh;
                 overflow: auto;
-                width: 300px;
+                width: 320px; /* Increased width for new settings */
             }
 
             #${ELEMENT_IDS.UI}.visible {
@@ -1397,6 +2744,18 @@
 
             #${ELEMENT_IDS.UI} input[type="range"] {
                 width: 100%;
+            }
+
+            #${ELEMENT_IDS.UI} textarea {
+                padding: 8px;
+                border: 1px solid rgba(0, 0, 0, 0.2);
+                border-radius: 4px;
+                color: #333;
+                width: 100%;
+                box-sizing: border-box;
+                font-size: 13px;
+                font-family: monospace;
+                resize: vertical;
             }
 
             #${ELEMENT_IDS.UI} .value-display {
@@ -1521,7 +2880,20 @@
                 background-color: #45a049;
             }
 
-            .schedule-info {
+            #${ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON} {
+                background-color: #2196F3;
+                color: white;
+                padding: 8px 12px;
+                border: none;
+                width: 100%;
+                margin-top: 5px;
+            }
+
+            #${ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON}:hover {
+                background-color: #0b7dda;
+            }
+
+            .schedule-info, .info-text {
                 font-size: 11px;
                 color: rgba(0, 0, 0, 0.6);
                 font-style: italic;
@@ -1534,24 +2906,31 @@
                 position: fixed;
                 top: 50%;
                 right: ${settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset}px;
-                transform: translateY(-50%) rotate(-90deg);
-                transform-origin: 100% 50%;
+                transform: translateY(-50%);
                 background-color: rgba(240, 240, 240, 0.8);
                 border: 1px solid rgba(0, 0, 0, 0.1);
-                padding: 5px 10px;
-                z-index: 9997;
-                border-radius: 5px 5px 0 0;
+                padding: 8px;
+                z-index: 2147483645; /* One less than main button */
+                border-radius: 50%;
                 cursor: pointer;
-                color: #444;
-                font-size: 12px;
-                white-space: nowrap;
                 box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
                 transition: all 0.3s ease;
+                width: 36px;
+                height: 36px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             #${ELEMENT_IDS.TOGGLE_UI_BUTTON}:hover {
                 background-color: rgba(240, 240, 240, 1);
-                padding-bottom: 8px;
+                transform: translateY(-50%) scale(1.1);
+            }
+
+            #${ELEMENT_IDS.TOGGLE_UI_BUTTON} svg {
+                width: 20px;
+                height: 20px;
+                color: #555;
             }
 
             .version-info {
@@ -1587,6 +2966,37 @@
     }
 
     /**
+     * Register menu commands for easier access
+     */
+    function registerMenuCommands() {
+        try {
+            if (typeof GM.registerMenuCommand !== 'undefined') {
+                GM.registerMenuCommand('Toggle Dark Mode', () => toggleDarkMode());
+                GM.registerMenuCommand('Open Settings', () => {
+                    const ui = document.getElementById(ELEMENT_IDS.UI);
+                    if (ui && !uiVisible) {
+                        toggleUI();
+                    }
+                });
+                GM.registerMenuCommand('Toggle Extreme Mode', () => {
+                    if (!settings.extremeMode) {
+                        settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
+                    }
+                    settings.extremeMode.enabled = !settings.extremeMode.enabled;
+                    saveSettings();
+                    
+                    // Update dark mode immediately if it's enabled
+                    if (darkModeEnabled) {
+                        toggleDarkMode(true);
+                    }
+                });
+            }
+        } catch (error) {
+            log('debug', 'Menu commands not supported by userscript manager');
+        }
+    }
+
+    /**
      * ------------------------
      * INITIALIZATION & LIFECYCLE
      * ------------------------
@@ -1600,10 +3010,13 @@
         if (isInitialized) return;
         isInitialized = true;
         
-        console.log('Dark Mode Toggle: Initializing...');
+        log('info', 'Enhanced Dark Mode Toggle: Initializing...');
         
         await loadSettings();
         await loadPerSiteSettings();
+
+        // Register menu commands
+        registerMenuCommands();
 
         // Create UI elements
         createToggleButton();
@@ -1616,7 +3029,7 @@
 
         // Initialize dark mode state
         darkModeEnabled = await GM.getValue(STORAGE_KEYS.DARK_MODE, false);
-        if (darkModeEnabled && !isSiteExcluded(window.location.href)) {
+        if (darkModeEnabled) {
             toggleDarkMode(true);
         } else {
             toggleDarkMode(false);
@@ -1628,7 +3041,15 @@
         // Set up scheduled dark mode checking
         setupScheduleChecking();
         
-        console.log('Dark Mode Toggle: Initialization complete');
+        // Set up dynamic scanning
+        setupDynamicScanning();
+        
+        // Track problematic sites for diagnostics
+        if (settings.diagnostics && settings.diagnostics.enabled) {
+            collectSiteInfo();
+        }
+        
+        log('info', 'Enhanced Dark Mode Toggle: Initialization complete');
     }
 
     /**
@@ -1640,7 +3061,7 @@
             // Only check for critical UI elements and recreate if missing
             const buttonExists = document.getElementById(ELEMENT_IDS.BUTTON);
             if (!buttonExists) {
-                console.log('Dark Mode Toggle: Button missing, recreating...');
+                log('info', 'Dark Mode Toggle: Button missing, recreating...');
                 createToggleButton();
                 updateButtonPosition();
                 updateButtonState();
@@ -1648,7 +3069,7 @@
 
             const toggleUIButtonExists = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
             if (!toggleUIButtonExists) {
-                console.log('Dark Mode Toggle: Settings button missing, recreating...');
+                log('info', 'Dark Mode Toggle: Settings button missing, recreating...');
                 createToggleUIButton();
             }
 
@@ -1656,7 +3077,7 @@
             if (uiVisible) {
                 const uiExists = document.getElementById(ELEMENT_IDS.UI);
                 if (!uiExists) {
-                    console.log('Dark Mode Toggle: UI missing, recreating...');
+                    log('info', 'Dark Mode Toggle: UI missing, recreating...');
                     createUI();
                     updateUIValues();
                     applyUIStyles();
@@ -1668,12 +3089,37 @@
                     }
                 }
             }
-        }, 300));  // Reduced from 500ms to 300ms for better responsiveness
+            
+            // Extend this to react to theme changes in the website itself
+            if (darkModeEnabled && extremeModeActive) {
+                // Check for new shadow roots
+                findShadowRoots();
+                
+                // Re-apply extreme mode overrides on critical elements
+                forceElementStyles('body', { 
+                    backgroundColor: '#121212 !important', 
+                    color: '#ddd !important' 
+                });
+                
+                forceElementStyles('main, article, section, [role="main"]', { 
+                    backgroundColor: '#1a1a1a !important', 
+                    color: '#ddd !important' 
+                });
+            }
+        }, 300));
 
-        // Observe the body but with a subtree depth of 1 to avoid expensive deep watching
-        observer.observe(document.body, {
+        // Observe the body and head for changes
+        observer.observe(document.documentElement, {
             childList: true,
-            subtree: false
+            subtree: true,
+            attributes: false,
+            characterData: false
+        });
+        
+        // Also observe document for more complete coverage
+        observer.observe(document, {
+            childList: true,
+            attributes: false
         });
     }
 
@@ -1681,18 +3127,46 @@
      * Handle script initialization based on document readiness
      */
     function initializationHandler() {
-        // Wait for document body to be available
-        if (!document.body) {
-            setTimeout(initializationHandler, 50);
-            return;
-        }
+        // Check if document is ready to process
+        const initNow = () => {
+            init().then(() => {
+                setupMutationObserver();
+            });
+        };
         
-        init().then(() => {
-            setupMutationObserver();
-        });
+        // Handle cases where document body might not be available immediately
+        if (document.body) {
+            initNow();
+        } else {
+            // Create a lightweight observer to wait for body
+            const bodyObserver = new MutationObserver(() => {
+                if (document.body) {
+                    bodyObserver.disconnect();
+                    initNow();
+                }
+            });
+            
+            bodyObserver.observe(document.documentElement, { 
+                childList: true,
+                subtree: true
+            });
+            
+            // Fallback timeout to ensure initialization
+            setTimeout(() => {
+                bodyObserver.disconnect();
+                
+                // Force create a body if it doesn't exist (rare cases)
+                if (!document.body) {
+                    const body = document.createElement('body');
+                    document.documentElement.appendChild(body);
+                }
+                
+                initNow();
+            }, 2000);
+        }
     }
 
-    // Begin initialization
+    // Begin initialization with document ready state detection
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initializationHandler);
     } else {
