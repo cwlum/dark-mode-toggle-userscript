@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         ☀️Dark Mode Toggle Enhanced
+// @name         ☀️Dark Mode Toggle
 // @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Ultra enhanced dark mode toggle with improved compatibility, extreme mode, dynamic selectors, per-site memory, and advanced DOM monitoring
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
