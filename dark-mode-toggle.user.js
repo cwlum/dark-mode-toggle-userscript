@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         ☀️Dark Mode Toggle
+// @name         ☀️Dark Mode Toggle Enhanced
 // @author       Cervantes Wu (http://www.mriwu.us)
-// @description  Ultra enhanced dark mode toggle with improved compatibility, extreme mode, dynamic selectors and advanced DOM monitoring
+// @description  Ultra enhanced dark mode toggle with improved compatibility, extreme mode, dynamic selectors, per-site memory, and advanced DOM monitoring
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      3.0.0
+// @version      3.1.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
@@ -44,19 +44,37 @@
         SCHEDULE_START_TIME: 'scheduleStartTime',
         SCHEDULE_END_TIME: 'scheduleEndTime',
         THEME_PRESETS_SELECT: 'themePresetsSelect',
-        EXTREME_MODE_TOGGLE: 'extremeModeToggle', // New element ID for extreme mode toggle
-        CUSTOM_CSS_TEXTAREA: 'customCssTextarea', // New element ID for custom CSS input
-        DYNAMIC_SELECTORS_TOGGLE: 'dynamicSelectorsToggle', // New element ID for dynamic selectors toggle
-        FORCE_DARK_TOGGLE: 'forceDarkToggle', // New element ID for force dark mode toggle
-        SHOW_DIAGNOSTICS_BUTTON: 'showDiagnosticsButton' // New element ID for diagnostics button
+        EXTREME_MODE_TOGGLE: 'extremeModeToggle',
+        CUSTOM_CSS_TEXTAREA: 'customCssTextarea',
+        DYNAMIC_SELECTORS_TOGGLE: 'dynamicSelectorsToggle',
+        FORCE_DARK_TOGGLE: 'forceDarkToggle',
+        SHOW_DIAGNOSTICS_BUTTON: 'showDiagnosticsButton'
     };
 
     const STORAGE_KEYS = {
         SETTINGS: 'settings',
         DARK_MODE: 'darkMode',
         PER_SITE_SETTINGS_PREFIX: 'perSiteSettings_',
-        CUSTOM_CSS_PREFIX: 'customCss_', // New storage key prefix for per-site custom CSS
-        PROBLEMATIC_SITES: 'problematicSites' // New storage key for tracking problematic sites
+        CUSTOM_CSS_PREFIX: 'customCss_',
+        PROBLEMATIC_SITES: 'problematicSites'
+    };
+
+    const SITE_PROFILES = {
+        DEFAULT: 'default',
+        NEWS: 'news',
+        FORUM: 'forum',
+        DOCUMENTATION: 'documentation',
+        VIDEO: 'video',
+        SOCIAL: 'social'
+    };
+
+    const QUICK_ACTIONS = {
+        TOGGLE: 'toggle',
+        EXTREME: 'extreme',
+        SETTINGS: 'settings',
+        RESET: 'reset',
+        PRESETS: 'presets',
+        SAVE: 'save'
     };
 
     // Complete SVG icons for moon and sun
@@ -250,6 +268,45 @@
             enabled: false,
             logLevel: 'info',
             collectStats: true
+        },
+        // Site profiles for quick configuration
+        siteProfiles: {
+            default: {
+                brightness: 100,
+                contrast: 90,
+                sepia: 10,
+                extremeMode: false
+            },
+            news: {
+                brightness: 95,
+                contrast: 95,
+                sepia: 5,
+                extremeMode: false
+            },
+            forum: {
+                brightness: 100,
+                contrast: 85,
+                sepia: 0,
+                extremeMode: false
+            },
+            documentation: {
+                brightness: 100,
+                contrast: 90,
+                sepia: 15,
+                extremeMode: false
+            },
+            video: {
+                brightness: 80,
+                contrast: 110,
+                sepia: 0,
+                extremeMode: true
+            },
+            social: {
+                brightness: 90,
+                contrast: 95,
+                sepia: 5,
+                extremeMode: true
+            }
         }
     };
 
@@ -276,6 +333,11 @@
     let extremeModeActive = false; // Track if extreme mode is currently active
     let originalStyles = new Map(); // Store original element styles for restoration
     let forcedElementsCount = 0; // Count forced elements for diagnostics
+    let elementsCache = new Map(); // Cache for frequently accessed elements
+    let pendingOperations = new Set(); // Track pending heavy operations
+    let lastDeepScanTime = 0; // Last time a deep scan was performed
+    let isInitialScan = true; // Flag to track initial scan vs subsequent scans
+    let observers = []; // Store mutation observers for potential cleanup
 
     /**
      * ------------------------
@@ -284,35 +346,106 @@
      */
     
     /**
-     * Debounce function to limit how often a function is executed
+     * Get an element by ID with caching
+     * @param {string} id - Element ID to get
+     * @return {HTMLElement|null} The element or null if not found
+     */
+    function getElement(id) {
+        if (elementsCache.has(id)) {
+            const element = elementsCache.get(id);
+            // Verify the element is still in the DOM
+            if (document.contains(element)) {
+                return element;
+            }
+            // Element no longer in DOM, remove from cache
+            elementsCache.delete(id);
+        }
+        
+        const element = document.getElementById(id);
+        if (element) {
+            elementsCache.set(id, element);
+        }
+        return element;
+    }
+
+    /**
+     * Clear specific cached elements when they're no longer needed
+     * @param {Array<string>} ids - Element IDs to clear from cache
+     */
+    function clearElementsCache(ids = []) {
+        if (ids.length === 0) {
+            elementsCache.clear();
+        } else {
+            ids.forEach(id => elementsCache.delete(id));
+        }
+    }
+
+    /**
+     * Improved debounce function with options
      * @param {Function} func - Function to debounce
-     * @param {number} delay - Delay in ms
+     * @param {number} wait - Delay in ms
+     * @param {Object} options - Options like leading/trailing
      * @return {Function} Debounced function
      */
-    function debounce(func, delay) {
+    function debounce(func, wait, options = {}) {
         let timeout;
+        
+        const { leading = false, trailing = true } = options;
+        
         return function(...args) {
             const context = this;
+            const invokeLeading = leading && !timeout;
+            
             clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(context, args), delay);
+            
+            timeout = setTimeout(() => {
+                timeout = null;
+                if (trailing) func.apply(context, args);
+            }, wait);
+            
+            if (invokeLeading) func.apply(context, args);
         };
     }
 
     /**
-     * Throttle function to limit how often a function is executed
+     * Improved throttle function with options
      * @param {Function} func - Function to throttle
      * @param {number} limit - Limit in ms
+     * @param {Object} options - Options like leading/trailing
      * @return {Function} Throttled function
      */
-    function throttle(func, limit) {
+    function throttle(func, limit, options = {}) {
         let inThrottle;
+        let lastFunc;
+        let lastRan;
+        
+        const { leading = true, trailing = true } = options;
+        
         return function(...args) {
             const context = this;
-            if (!inThrottle) {
+            
+            if (!inThrottle && leading) {
                 func.apply(context, args);
+                lastRan = Date.now();
                 inThrottle = true;
-                setTimeout(() => inThrottle = false, limit);
+            } else {
+                // Store last function call
+                lastFunc = function() {
+                    if (trailing) {
+                        func.apply(context, args);
+                    }
+                };
             }
+            
+            clearTimeout(lastFunc._throttleTimeout);
+            
+            // Schedule last function call
+            lastFunc._throttleTimeout = setTimeout(function() {
+                if (trailing && lastFunc) {
+                    lastFunc();
+                }
+                inThrottle = false;
+            }, limit - (Date.now() - lastRan));
         };
     }
 
@@ -370,18 +503,32 @@
     }
 
     /**
-     * Check if current site is in the exclusion list
+     * Enhanced check if current site is in the exclusion list
      * @param {string} url - Current URL to check
      * @return {boolean} Whether site is excluded
      */
     function isSiteExcluded(url) {
         return settings.exclusionList.some(pattern => {
-            // Support basic wildcards
-            if (pattern.includes('*')) {
-                const regexPattern = pattern
-                    .replace(/\./g, '\\.')
-                    .replace(/\*/g, '.*');
-                return new RegExp('^' + regexPattern + '$').test(url);
+            // Support advanced wildcards and regex-like patterns
+            if (pattern.includes('*') || pattern.includes('?') || pattern.includes('^') || pattern.includes('$')) {
+                try {
+                    // Convert wildcard pattern to regex
+                    let regexPattern = pattern
+                        .replace(/\./g, '\\.')
+                        .replace(/\*/g, '.*')
+                        .replace(/\?/g, '.')
+                        .replace(/\//g, '\\/');
+                    
+                    // Handle ^ and $ specifically
+                    if (!regexPattern.startsWith('^')) regexPattern = '^' + regexPattern;
+                    if (!regexPattern.endsWith('$')) regexPattern += '$';
+                    
+                    return new RegExp(regexPattern).test(url);
+                } catch (e) {
+                    // Fallback to simple check if regex parsing fails
+                    log('warn', `Invalid exclusion pattern: ${pattern}`, e);
+                    return url.startsWith(pattern);
+                }
             }
             return url.startsWith(pattern);
         });
@@ -622,7 +769,7 @@
         
         const report = {
             timestamp: new Date().toISOString(),
-            version: '3.0.0',
+            version: '3.1.0',
             settings: { ...settings },
             siteInfo: diagnosticsData.siteInfo,
             issues: diagnosticsData.issues,
@@ -811,6 +958,9 @@
                 childList: true,
                 subtree: true
             });
+            
+            // Store observer for potential cleanup
+            observers.push(observer);
         } catch (error) {
             log('error', `Error observing shadow DOM: ${error.message}`, shadowRoot);
         }
@@ -881,77 +1031,121 @@
     }
 
     /**
-     * Perform a deep scan of the document to apply extreme dark mode
+     * Optimized deep scan with better performance
      */
     function performDeepScan() {
         if (!settings.dynamicSelectors || !settings.dynamicSelectors.deepScan || !extremeModeActive) {
             return;
         }
         
-        log('info', 'Performing deep scan for extreme dark mode');
+        const now = Date.now();
+        const minInterval = 2000; // Minimum time between scans in ms
         
-        try {
-            // Find all elements
-            const elements = document.querySelectorAll('body *');
-            
-            // Get computed background colors
-            for (const element of elements) {
-                const computedStyle = window.getComputedStyle(element);
-                const backgroundColor = computedStyle.backgroundColor;
-                const color = computedStyle.color;
-                
-                // Check if element has light background and dark text
-                if (isLightColor(backgroundColor) && isDarkColor(color)) {
-                    // Store original styles
-                    if (!originalStyles.has(element)) {
-                        originalStyles.set(element, element.getAttribute('style') || '');
-                    }
-                    
-                    // Force dark background and light text
-                    let currentStyle = element.getAttribute('style') || '';
-                    let newStyle = currentStyle + '; background-color: #1a1a1a !important; color: #ddd !important;';
-                    element.setAttribute('style', newStyle);
-                    forcedElementsCount++;
-                }
-                
-                // Look for problematic fixed elements (lightboxes, modals, etc.)
-                if (computedStyle.position === 'fixed' || computedStyle.position === 'sticky') {
-                    if (isLightColor(backgroundColor)) {
-                        // Force dark background for fixed elements
-                        let currentStyle = element.getAttribute('style') || '';
-                        let newStyle = currentStyle + '; background-color: #1a1a1a !important;';
-                        element.setAttribute('style', newStyle);
-                        forcedElementsCount++;
-                    }
-                }
-            }
-            
-            // Also check shadow DOM
-            shadowRoots.forEach(root => {
-                try {
-                    const shadowElements = root.querySelectorAll('*');
-                    
-                    for (const element of shadowElements) {
-                        const computedStyle = window.getComputedStyle(element);
-                        const backgroundColor = computedStyle.backgroundColor;
-                        const color = computedStyle.color;
-                        
-                        if (isLightColor(backgroundColor) && isDarkColor(color)) {
-                            let currentStyle = element.getAttribute('style') || '';
-                            let newStyle = currentStyle + '; background-color: #1a1a1a !important; color: #ddd !important;';
-                            element.setAttribute('style', newStyle);
-                            forcedElementsCount++;
-                        }
-                    }
-                } catch (error) {
-                    log('debug', `Error processing shadow DOM elements: ${error.message}`, root);
-                }
-            });
-            
-            log('info', `Deep scan completed, processed ${forcedElementsCount} elements`);
-        } catch (error) {
-            log('error', `Error during deep scan: ${error.message}`);
+        // Skip if we've run recently unless it's the initial scan
+        if (!isInitialScan && now - lastDeepScanTime < minInterval) {
+            return;
         }
+        
+        // If a scan is already in progress, don't start another
+        if (pendingOperations.has('deepScan')) {
+            return;
+        }
+        
+        lastDeepScanTime = now;
+        isInitialScan = false;
+        pendingOperations.add('deepScan');
+        
+        log('info', 'Performing optimized deep scan for extreme dark mode');
+        
+        // Use RequestAnimationFrame for better performance
+        requestAnimationFrame(() => {
+            try {
+                // Batch DOM operations by processing in chunks
+                const processElementsInChunks = (elements, chunkSize = 50) => {
+                    const total = elements.length;
+                    let processed = 0;
+                    let forcedCount = 0;
+                    
+                    const processChunk = () => {
+                        const chunk = elements.slice(processed, processed + chunkSize);
+                        processed += chunk.length;
+                        
+                        chunk.forEach(element => {
+                            // Process only if still in extremeMode
+                            if (!extremeModeActive) return;
+                            
+                            const computedStyle = window.getComputedStyle(element);
+                            const backgroundColor = computedStyle.backgroundColor;
+                            const color = computedStyle.color;
+                            
+                            // Skip already processed elements
+                            if (originalStyles.has(element)) return;
+                            
+                            // Check if element needs dark mode
+                            if (isLightColor(backgroundColor) && isDarkColor(color)) {
+                                // Store original styles
+                                originalStyles.set(element, element.getAttribute('style') || '');
+                                
+                                // Force dark background and light text
+                                let currentStyle = element.getAttribute('style') || '';
+                                let newStyle = currentStyle + '; background-color: #1a1a1a !important; color: #ddd !important;';
+                                element.setAttribute('style', newStyle);
+                                forcedCount++;
+                            }
+                            
+                            // Special handling for fixed/sticky elements
+                            if (computedStyle.position === 'fixed' || computedStyle.position === 'sticky') {
+                                if (isLightColor(backgroundColor) && !originalStyles.has(element)) {
+                                    originalStyles.set(element, element.getAttribute('style') || '');
+                                    let currentStyle = element.getAttribute('style') || '';
+                                    let newStyle = currentStyle + '; background-color: #1a1a1a !important;';
+                                    element.setAttribute('style', newStyle);
+                                    forcedCount++;
+                                }
+                            }
+                        });
+                        
+                        // Update total forced elements count
+                        forcedElementsCount += forcedCount;
+                        
+                        // If more elements to process, schedule next chunk
+                        if (processed < total && extremeModeActive) {
+                            setTimeout(() => requestAnimationFrame(processChunk), 0);
+                        } else {
+                            pendingOperations.delete('deepScan');
+                            log('info', `Deep scan completed, processed ${forcedCount} elements`);
+                        }
+                    };
+                    
+                    // Start processing
+                    processChunk();
+                };
+                
+                // Get elements to process - filter out already processed ones
+                const allBodyElements = Array.from(document.querySelectorAll('body *'));
+                const elementsToProcess = allBodyElements.filter(el => !originalStyles.has(el));
+                
+                // Process the elements in chunks
+                processElementsInChunks(elementsToProcess, 50);
+                
+                // Handle Shadow DOM separately with a smaller chunk size
+                if (settings.dynamicSelectors.detectShadowDOM) {
+                    shadowRoots.forEach(root => {
+                        try {
+                            const shadowElements = Array.from(root.querySelectorAll('*'))
+                                .filter(el => !originalStyles.has(el));
+                            processElementsInChunks(shadowElements, 20);
+                        } catch (error) {
+                            log('debug', `Error processing shadow DOM elements: ${error.message}`, root);
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                pendingOperations.delete('deepScan');
+                log('error', `Error during deep scan: ${error.message}`);
+            }
+        });
     }
 
     /**
@@ -1005,13 +1199,192 @@
     }
 
     /**
+     * Improved memory management
+     */
+    function cleanupResources() {
+        // Clear caches when not needed
+        if (!uiVisible) {
+            clearElementsCache();
+        }
+        
+        // Clean up shadows that might be detached
+        for (const root of shadowRoots) {
+            if (!document.contains(root.host)) {
+                shadowRoots.delete(root);
+            }
+        }
+        
+        // Clean up original styles that might be for removed elements
+        for (const [element, _] of originalStyles) {
+            if (!document.contains(element)) {
+                originalStyles.delete(element);
+            }
+        }
+    }
+
+    /**
+     * New feature: Toast notification system
+     * @param {string} message - Message to show
+     * @param {number} duration - Display duration in ms
+     */
+    function showToast(message, duration = 2000) {
+        // Remove any existing toasts
+        const existingToast = getElement('darkModeToast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        const toast = document.createElement('div');
+        toast.id = 'darkModeToast';
+        toast.className = 'dark-mode-toast';
+        toast.textContent = message;
+        
+        // Style the toast
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 2147483647;
+            font-family: ${settings.fontFamily};
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        `;
+        
+        document.body.appendChild(toast);
+        
+        // Animate in
+        setTimeout(() => {
+            toast.style.opacity = '1';
+        }, 10);
+        
+        // Animate out and remove
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, duration);
+    }
+
+    /**
+     * Detect site type for automatic profile selection
+     * @return {string} Detected site type
+     */
+    function detectSiteType() {
+        const url = window.location.hostname;
+        const htmlContent = document.documentElement.innerHTML.toLowerCase();
+        const metaTags = document.querySelectorAll('meta[name], meta[property]');
+        
+        // Video sites detection
+        if (
+            url.includes('youtube.com') || 
+            url.includes('vimeo.com') || 
+            url.includes('netflix.com') ||
+            url.includes('hulu.com') ||
+            url.includes('twitch.tv') ||
+            document.querySelectorAll('video').length > 0
+        ) {
+            return SITE_PROFILES.VIDEO;
+        }
+        
+        // Social media detection
+        if (
+            url.includes('facebook.com') || 
+            url.includes('twitter.com') || 
+            url.includes('instagram.com') ||
+            url.includes('linkedin.com') ||
+            url.includes('reddit.com')
+        ) {
+            return SITE_PROFILES.SOCIAL;
+        }
+        
+        // Documentation detection
+        if (
+            url.includes('docs.') || 
+            url.includes('documentation') ||
+            url.includes('github.com') ||
+            url.includes('stackoverflow.com') ||
+            htmlContent.includes('documentation') && 
+            (htmlContent.includes('api') || htmlContent.includes('reference') || htmlContent.includes('guide'))
+        ) {
+            return SITE_PROFILES.DOCUMENTATION;
+        }
+        
+        // Forum detection
+        if (
+            url.includes('forum') || 
+            htmlContent.includes('forum') ||
+            document.querySelectorAll('[class*="post"], [class*="thread"], [class*="topic"]').length > 5
+        ) {
+            return SITE_PROFILES.FORUM;
+        }
+        
+        // News detection
+        if (
+            url.includes('news') || 
+            htmlContent.includes('article') ||
+            Array.from(metaTags).some(tag => {
+                const name = tag.getAttribute('name') || tag.getAttribute('property') || '';
+                return name.includes('article') || name.includes('publish');
+            })
+        ) {
+            return SITE_PROFILES.NEWS;
+        }
+        
+        return SITE_PROFILES.DEFAULT;
+    }
+
+    /**
+     * Apply a site profile to customize settings 
+     * @param {string} profileName - The profile name to apply
+     */
+    function applySiteProfile(profileName) {
+        if (!settings.siteProfiles || !settings.siteProfiles[profileName]) {
+            log('warn', `Profile ${profileName} not found`);
+            return;
+        }
+        
+        const profile = settings.siteProfiles[profileName];
+        
+        // Apply profile settings
+        settings.brightness = profile.brightness;
+        settings.contrast = profile.contrast;
+        settings.sepia = profile.sepia;
+        
+        // Apply extreme mode if in profile
+        if (typeof profile.extremeMode === 'boolean') {
+            if (!settings.extremeMode) {
+                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
+            }
+            settings.extremeMode.enabled = profile.extremeMode;
+        }
+        
+        // Remember which profile was applied
+        settings.currentSiteType = profileName;
+        
+        // Update UI and save settings
+        updateUIValues();
+        updateDarkReaderConfig();
+        
+        log('info', `Applied site profile: ${profileName}`, profile);
+    }
+
+    /**
      * ------------------------
      * STORAGE MANAGEMENT
      * ------------------------
      */
     
     /**
-     * Load per-site settings from storage
+     * Enhanced function to load per-site settings
      * @return {Promise<void>}
      */
     async function loadPerSiteSettings() {
@@ -1019,7 +1392,23 @@
         try {
             const storedSettings = await GM.getValue(siteKey, null);
             if (storedSettings) {
+                // Apply all stored settings for this site
+                const prevExtremeMode = settings.extremeMode && settings.extremeMode.enabled;
+                
+                // Apply per-site settings more comprehensively
                 settings = { ...settings, ...storedSettings };
+                
+                // Make sure we don't lose nested objects by merging them correctly
+                if (storedSettings.extremeMode && settings.extremeMode) {
+                    settings.extremeMode = { ...settings.extremeMode, ...storedSettings.extremeMode };
+                }
+                
+                // Apply custom dynamic selector settings if they exist
+                if (storedSettings.dynamicSelectors && settings.dynamicSelectors) {
+                    settings.dynamicSelectors = { ...settings.dynamicSelectors, ...storedSettings.dynamicSelectors };
+                }
+                
+                // Remember dark mode state for this site
                 darkModeEnabled = typeof storedSettings.darkModeEnabled === 'boolean' 
                     ? storedSettings.darkModeEnabled 
                     : false;
@@ -1028,9 +1417,21 @@
                 const customCssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
                 currentSiteCustomCSS = await GM.getValue(customCssKey, '');
                 
-                log('info', `Loaded per-site settings for ${getCurrentSiteIdentifier()}:`, storedSettings);
+                log('info', `Loaded comprehensive per-site settings for ${getCurrentSiteIdentifier()}:`, storedSettings);
+                
+                // If extreme mode status changed, we need to handle that
+                if (prevExtremeMode !== (settings.extremeMode && settings.extremeMode.enabled)) {
+                    log('info', `Extreme mode status changed for this site: ${settings.extremeMode && settings.extremeMode.enabled}`);
+                }
             } else {
                 log('info', `No per-site settings found for ${getCurrentSiteIdentifier()}. Using global settings.`);
+                
+                // Try to auto-detect site type and apply appropriate profile
+                const detectedProfile = detectSiteType();
+                if (detectedProfile && settings.siteProfiles && settings.siteProfiles[detectedProfile]) {
+                    log('info', `Auto-detected site type: ${detectedProfile}. Applying profile.`);
+                    applySiteProfile(detectedProfile);
+                }
             }
         } catch (error) {
             log('error', `Failed to load per-site settings:`, error);
@@ -1038,18 +1439,30 @@
     }
 
     /**
-     * Save per-site settings to storage
+     * Enhanced function to save per-site settings
      * @return {Promise<void>}
      */
     async function savePerSiteSettings() {
         const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + getCurrentSiteIdentifier();
+        
+        // Save a more comprehensive set of settings for this site
         const perSiteSettings = {
+            // Basic display settings
             brightness: settings.brightness,
             contrast: settings.contrast,
             sepia: settings.sepia,
             darkModeEnabled: darkModeEnabled,
-            // Save extreme mode state for this site
-            extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
+            
+            // Advanced settings
+            extremeMode: settings.extremeMode,
+            dynamicSelectors: settings.dynamicSelectors,
+            
+            // Site-specific metadata
+            lastUpdated: new Date().toISOString(),
+            siteType: settings.currentSiteType || 'custom',
+            
+            // Store whether this site has custom settings
+            hasCustomSettings: true
         };
         
         try {
@@ -1061,7 +1474,7 @@
                 await GM.setValue(customCssKey, currentSiteCustomCSS);
             }
             
-            log('info', `Saved per-site settings for ${getCurrentSiteIdentifier()}:`, perSiteSettings);
+            log('info', `Saved comprehensive per-site settings for ${getCurrentSiteIdentifier()}:`, perSiteSettings);
         } catch (error) {
             log('error', `Failed to save per-site settings:`, error);
         }
@@ -1100,6 +1513,11 @@
             
             if (!settings.diagnostics) {
                 settings.diagnostics = DEFAULT_SETTINGS.diagnostics;
+            }
+            
+            // Ensure site profiles exist
+            if (!settings.siteProfiles) {
+                settings.siteProfiles = DEFAULT_SETTINGS.siteProfiles;
             }
             
             updateButtonPosition();
@@ -1219,11 +1637,11 @@
                 setupScheduleChecking();
                 setupDynamicScanning();
 
-                alert('All settings have been reset to defaults.');
+                showToast('All settings have been reset to defaults');
 
             } catch (error) {
                 log('error', "Error during reset:", error);
-                alert("An error occurred during settings reset. Please check the console.");
+                showToast("An error occurred during settings reset");
             }
         }
     }
@@ -1256,7 +1674,7 @@
                 perSite: perSiteSettings,
                 customCss: customCssSettings,
                 darkModeEnabled: darkModeEnabled,
-                version: '3.0.0'
+                version: '3.1.0'
             };
             
             const jsonString = JSON.stringify(exportData, null, 2);
@@ -1274,9 +1692,11 @@
                 URL.revokeObjectURL(url);
             }, 100);
             
+            showToast('Settings exported successfully');
+            
         } catch (error) {
             log('error', 'Failed to export settings:', error);
-            alert('Failed to export settings. See console for details.');
+            showToast('Failed to export settings');
         }
     }
 
@@ -1340,11 +1760,11 @@
                         toggleDarkMode(true);
                     }
                     
-                    alert('Settings imported successfully!');
+                    showToast('Settings imported successfully!');
                     
                 } catch (parseError) {
                     log('error', 'Failed to parse settings file:', parseError);
-                    alert('Failed to import settings: Invalid file format');
+                    showToast('Failed to import settings: Invalid file format');
                 }
             };
             
@@ -1352,7 +1772,7 @@
             
         } catch (error) {
             log('error', 'Failed to import settings:', error);
-            alert('Failed to import settings. See console for details.');
+            showToast('Failed to import settings');
         }
     }
 
@@ -1370,7 +1790,7 @@
     async function toggleDarkMode(force) {
         darkModeEnabled = force !== undefined ? force : !darkModeEnabled;
 
-        const button = document.getElementById(ELEMENT_IDS.BUTTON);
+        const button = getElement(ELEMENT_IDS.BUTTON);
         if (!button) return;
 
         if (darkModeEnabled) {
@@ -1637,7 +2057,13 @@
             dynamicScanInterval = setInterval(() => {
                 // Find shadow DOM elements
                 if (settings.dynamicSelectors.detectShadowDOM) {
-                    findShadowRoots();
+                    if (!pendingOperations.has('shadowScan')) {
+                        pendingOperations.add('shadowScan');
+                        requestAnimationFrame(() => {
+                            findShadowRoots();
+                            pendingOperations.delete('shadowScan');
+                        });
+                    }
                 }
                 
                 // If dark mode and extreme mode are both active, perform deep scan
@@ -1645,6 +2071,9 @@
                     // Use throttled deep scan for performance
                     throttledDeepScan();
                 }
+                
+                // Run memory cleanup occasionally
+                cleanupResources();
             }, scanInterval);
         }
     }
@@ -1671,6 +2100,434 @@
 
     /**
      * ------------------------
+     * QUICK ACTIONS MENU
+     * ------------------------
+     */
+    
+    /**
+     * Create the quick actions menu
+     * @return {HTMLElement} The menu element
+     */
+    function createQuickActionsMenu() {
+        const existingMenu = getElement('quickActionMenu');
+        if (existingMenu) existingMenu.remove();
+        
+        const menu = document.createElement('div');
+        menu.id = 'quickActionMenu';
+        menu.className = 'quick-action-menu';
+        menu.setAttribute('aria-label', 'Dark Mode Quick Actions');
+        menu.style.display = 'none';
+        
+        // Add quick action buttons
+        const actions = [
+            { 
+                id: QUICK_ACTIONS.TOGGLE, 
+                icon: darkModeEnabled ? SVG_ICONS.SUN : SVG_ICONS.MOON, 
+                text: darkModeEnabled ? 'Disable Dark Mode' : 'Enable Dark Mode',
+                onClick: () => toggleDarkMode()
+            },
+            { 
+                id: QUICK_ACTIONS.EXTREME, 
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5V5.5M14.5 1.5V5.5M9.5 17.5V21.5M14.5 17.5V21.5M5.5 9.5H1.5M5.5 14.5H1.5M22.5 9.5H18.5M22.5 14.5H18.5M12 22.5C17.7989 22.5 22.5 17.7989 22.5 12C22.5 6.20101 17.7989 1.5 12 1.5C6.20101 1.5 1.5 6.20101 1.5 12C1.5 17.7989 6.20101 22.5 12 22.5Z" stroke="currentColor"/><path d="M12 16.5C14.4853 16.5 16.5 14.4853 16.5 12C16.5 9.51472 14.4853 7.5 12 7.5C9.51472 7.5 7.5 9.51472 7.5 12C7.5 14.4853 9.51472 16.5 12 16.5Z" fill="currentColor"/></svg>`, 
+                text: (settings.extremeMode && settings.extremeMode.enabled) ? 'Disable Extreme Mode' : 'Enable Extreme Mode',
+                onClick: () => {
+                    if (!settings.extremeMode) {
+                        settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
+                    }
+                    settings.extremeMode.enabled = !(settings.extremeMode && settings.extremeMode.enabled);
+                    saveSettings();
+                    
+                    // Update dark mode immediately if it's enabled
+                    if (darkModeEnabled) {
+                        toggleDarkMode(true);
+                    }
+                    
+                    // Update the menu
+                    hideQuickActionsMenu();
+                    setTimeout(showQuickActionsMenu, 300);
+                }
+            },
+            { 
+                id: QUICK_ACTIONS.PRESETS, 
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`, 
+                text: 'Theme Presets',
+                onClick: () => showPresetSelector()
+            },
+            { 
+                id: QUICK_ACTIONS.SAVE, 
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`, 
+                text: 'Save for This Site',
+                onClick: () => {
+                    savePerSiteSettings();
+                    showToast('Settings saved for this site');
+                }
+            },
+            { 
+                id: QUICK_ACTIONS.SETTINGS, 
+                icon: SVG_ICONS.GEAR, 
+                text: 'Full Settings',
+                onClick: () => {
+                    hideQuickActionsMenu();
+                    const ui = getElement(ELEMENT_IDS.UI);
+                    if (ui && !uiVisible) {
+                        toggleUI();
+                    }
+                }
+            }
+        ];
+        
+        actions.forEach(action => {
+            const button = document.createElement('button');
+            button.className = 'quick-action-button';
+            button.setAttribute('aria-label', action.text);
+            button.setAttribute('title', action.text);
+            button.innerHTML = `
+                <span class="quick-action-icon">${action.icon}</span>
+                <span class="quick-action-text">${action.text}</span>
+            `;
+            button.addEventListener('click', action.onClick);
+            menu.appendChild(button);
+        });
+        
+        document.body.appendChild(menu);
+        return menu;
+    }
+
+    /**
+     * Show the quick actions menu
+     */
+    function showQuickActionsMenu() {
+        const menu = getElement('quickActionMenu') || createQuickActionsMenu();
+        
+        // Position menu near the toggle button
+        const button = getElement(ELEMENT_IDS.BUTTON);
+        if (button) {
+            const buttonRect = button.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
+            
+            // Calculate position to show menu above the button by default
+            let top = buttonRect.top - menuRect.height - 10;
+            let left = buttonRect.left;
+            
+            // Check if menu would go off the top of the viewport
+            if (top < 10) {
+                // Show menu below the button instead
+                top = buttonRect.bottom + 10;
+            }
+            
+            // Check if menu would go off the right of the viewport
+            if (left + menuRect.width > window.innerWidth - 10) {
+                left = window.innerWidth - menuRect.width - 10;
+            }
+            
+            menu.style.top = `${top}px`;
+            menu.style.left = `${left}px`;
+            menu.style.display = 'flex';
+            
+            // Add animation
+            menu.style.opacity = '0';
+            menu.style.transform = 'translateY(10px)';
+            
+            // Trigger animation
+            setTimeout(() => {
+                menu.style.opacity = '1';
+                menu.style.transform = 'translateY(0)';
+            }, 10);
+            
+            // Close when clicking outside
+            document.addEventListener('click', handleOutsideClick);
+        }
+    }
+
+    /**
+     * Hide the quick actions menu
+     */
+    function hideQuickActionsMenu() {
+        const menu = getElement('quickActionMenu');
+        if (menu) {
+            menu.style.opacity = '0';
+            menu.style.transform = 'translateY(10px)';
+            
+            setTimeout(() => {
+                menu.style.display = 'none';
+            }, 300);
+            
+            // Remove outside click handler
+            document.removeEventListener('click', handleOutsideClick);
+        }
+    }
+
+    /**
+     * Handle clicks outside the menu
+     * @param {Event} e - Click event
+     */
+    function handleOutsideClick(e) {
+        const menu = getElement('quickActionMenu');
+        const button = getElement(ELEMENT_IDS.BUTTON);
+        
+        if (menu && button && !menu.contains(e.target) && !button.contains(e.target)) {
+            hideQuickActionsMenu();
+        }
+    }
+
+    /**
+     * Show theme preset selector
+     */
+    function showPresetSelector() {
+        hideQuickActionsMenu();
+        
+        // Create a floating preset selector
+        const selector = document.createElement('div');
+        selector.id = 'presetSelector';
+        selector.className = 'preset-selector';
+        
+        const heading = document.createElement('h3');
+        heading.textContent = 'Select Theme Preset';
+        selector.appendChild(heading);
+        
+        // Add all theme presets
+        Object.entries(THEME_PRESETS).forEach(([key, preset]) => {
+            const presetButton = document.createElement('button');
+            presetButton.className = 'preset-button';
+            presetButton.textContent = preset.name;
+            presetButton.addEventListener('click', () => {
+                applyThemePreset(key);
+                document.body.removeChild(selector);
+                showToast(`Applied preset: ${preset.name}`);
+            });
+            selector.appendChild(presetButton);
+        });
+        
+        // Add close button
+        const closeButton = document.createElement('button');
+        closeButton.className = 'preset-close-button';
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', () => {
+            document.body.removeChild(selector);
+        });
+        selector.appendChild(closeButton);
+        
+        // Position selector in the center of the viewport
+        selector.style.position = 'fixed';
+        selector.style.top = '50%';
+        selector.style.left = '50%';
+        selector.style.transform = 'translate(-50%, -50%)';
+        selector.style.zIndex = '2147483647';
+        
+        document.body.appendChild(selector);
+    }
+
+    /**
+     * Enhance the toggle button with advanced interactions
+     */
+    function enhanceToggleButton() {
+        const button = getElement(ELEMENT_IDS.BUTTON);
+        if (!button) return;
+        
+        // Add right-click handler
+        button.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showQuickActionsMenu();
+        });
+        
+        // Add long press handler for mobile
+        let longPressTimer;
+        button.addEventListener('touchstart', () => {
+            longPressTimer = setTimeout(() => {
+                showQuickActionsMenu();
+            }, 600); // 600ms is a good threshold for long press
+        });
+        
+        button.addEventListener('touchend', () => {
+            clearTimeout(longPressTimer);
+        });
+        
+        // Add double-click handler as another way to show the menu
+        let lastClickTime = 0;
+        button.addEventListener('click', (e) => {
+            const currentTime = new Date().getTime();
+            const doubleClickThreshold = 300; // 300ms between clicks
+            
+            if (currentTime - lastClickTime < doubleClickThreshold) {
+                // It's a double click
+                e.preventDefault();
+                e.stopPropagation();
+                showQuickActionsMenu();
+            }
+            
+            lastClickTime = currentTime;
+        });
+        
+        // Update button tooltip
+        button.setAttribute('title', 'Toggle Dark Mode (right-click or long-press for options)');
+    }
+
+    /**
+     * Add CSS for enhanced features
+     */
+    function addEnhancementStyles() {
+        const styles = `
+            /* Quick Action Menu */
+            .quick-action-menu {
+                position: fixed;
+                background-color: ${settings.themeColor || '#f7f7f7'};
+                border-radius: 8px;
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+                padding: 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                z-index: 2147483646;
+                transition: opacity 0.3s, transform 0.3s;
+                font-family: ${settings.fontFamily};
+            }
+            
+            .quick-action-button {
+                display: flex;
+                align-items: center;
+                padding: 8px 12px;
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+                color: ${settings.textColor || '#444'};
+            }
+            
+            .quick-action-button:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+            }
+            
+            .quick-action-icon {
+                width: 20px;
+                height: 20px;
+                margin-right: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .quick-action-icon svg {
+                width: 18px;
+                height: 18px;
+            }
+            
+            .quick-action-text {
+                font-size: 14px;
+                white-space: nowrap;
+            }
+            
+            /* Preset Selector */
+            .preset-selector {
+                background-color: ${settings.themeColor || '#f7f7f7'};
+                border-radius: 8px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+                padding: 16px;
+                width: 280px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                color: ${settings.textColor || '#444'};
+                font-family: ${settings.fontFamily};
+            }
+            
+            .preset-selector h3 {
+                margin: 0 0 10px 0;
+                font-size: 16px;
+                text-align: center;
+            }
+            
+            .preset-button {
+                padding: 10px 14px;
+                background-color: rgba(0, 0, 0, 0.05);
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.2s;
+                color: ${settings.textColor || '#444'};
+                font-family: ${settings.fontFamily};
+            }
+            
+            .preset-button:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                transform: translateY(-1px);
+            }
+            
+            .preset-close-button {
+                margin-top: 10px;
+                padding: 8px;
+                background-color: transparent;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+                cursor: pointer;
+                color: ${settings.textColor || '#444'};
+            }
+            /* Site Profiles Section */
+            .site-info {
+                background-color: rgba(0, 0, 0, 0.05);
+                border-radius: 4px;
+                padding: 10px;
+                margin-top: 10px;
+                font-size: 12px;
+            }
+            
+            .site-info p {
+                margin: 4px 0;
+            }
+            
+            /* Dark mode button enhancements for mobile */
+            @media (max-width: 768px) {
+                #${ELEMENT_IDS.BUTTON} {
+                    width: 60px;
+                    height: 60px;
+                    border-radius: 30px;
+                }
+                
+                #${ELEMENT_IDS.BUTTON} .icon {
+                    width: 30px;
+                    height: 30px;
+                }
+                
+                #${ELEMENT_IDS.TOGGLE_UI_BUTTON} {
+                    width: 48px;
+                    height: 48px;
+                }
+                
+                #${ELEMENT_IDS.TOGGLE_UI_BUTTON} svg {
+                    width: 24px;
+                    height: 24px;
+                }
+                
+                /* Make the settings panel mobile-friendly */
+                #${ELEMENT_IDS.UI} {
+                    max-width: 90vw;
+                    max-height: 80vh;
+                    top: 10vh;
+                    left: 5vw;
+                    right: 5vw;
+                    width: auto;
+                }
+                
+                /* Larger touch targets */
+                #${ELEMENT_IDS.UI} button {
+                    padding: 10px;
+                    min-height: 44px;
+                }
+                
+                #${ELEMENT_IDS.UI} input, 
+                #${ELEMENT_IDS.UI} select {
+                    min-height: 44px;
+                }
+            }
+        `;
+        
+        // Inject the styles
+        GM.addStyle(styles);
+    }
+
+    /**
+     * ------------------------
      * UI MANAGEMENT
      * ------------------------
      */
@@ -1679,7 +2536,7 @@
      * Create the dark mode toggle button
      */
     function createToggleButton() {
-        const existingButton = document.getElementById(ELEMENT_IDS.BUTTON);
+        const existingButton = getElement(ELEMENT_IDS.BUTTON);
         if (existingButton) return;
         
         const button = document.createElement('button');
@@ -1700,7 +2557,7 @@
      * Update the button position based on settings
      */
     function updateButtonPosition() {
-        const button = document.getElementById(ELEMENT_IDS.BUTTON);
+        const button = getElement(ELEMENT_IDS.BUTTON);
         if (!button) return;
 
         const { position, offsetX, offsetY } = settings;
@@ -1735,7 +2592,7 @@
      * Update the visual state of the toggle button
      */
     function updateButtonState() {
-        const button = document.getElementById(ELEMENT_IDS.BUTTON);
+        const button = getElement(ELEMENT_IDS.BUTTON);
         if (!button) return;
 
         if (darkModeEnabled) {
@@ -1753,7 +2610,7 @@
      * Create the settings UI panel
      */
     function createUI() {
-        const existingUI = document.getElementById(ELEMENT_IDS.UI);
+        const existingUI = getElement(ELEMENT_IDS.UI);
         if (existingUI) return;
         
         const ui = document.createElement('div');
@@ -1810,6 +2667,9 @@
         positionSection.appendChild(createFormGroup(createLabel('Settings Button Position:'), uiElements.settingsButtonOffsetInput));
         
         ui.appendChild(positionSection);
+
+        // Site Profiles section (NEW)
+        ui.appendChild(createSiteProfilesSection());
 
         // Theme presets section
         const themePresetsSection = createSettingSection('Theme Presets');
@@ -1889,7 +2749,7 @@
         
         ui.appendChild(darkModeSection);
 
-        // Extreme Mode section (new)
+        // Extreme Mode section
         const extremeModeSection = createSettingSection('Extreme Mode');
         
         // Extreme mode toggle
@@ -1981,7 +2841,7 @@
         
         ui.appendChild(extremeModeSection);
 
-        // Dynamic Selectors section (new)
+        // Dynamic Selectors section
         const dynamicSelectorsSection = createSettingSection('Advanced Compatibility');
         
         // Dynamic selectors toggle
@@ -2220,7 +3080,7 @@
         
         ui.appendChild(exclusionsSection);
 
-        // Diagnostics section (new)
+        // Diagnostics section
         const diagnosticsSection = createSettingSection('Diagnostics');
         
         // Diagnostics enabled toggle
@@ -2321,11 +3181,92 @@
         // Version info
         const versionInfo = document.createElement('div');
         versionInfo.className = 'version-info';
-        versionInfo.textContent = 'Enhanced Dark Mode Toggle v3.0.0';
+        versionInfo.textContent = 'Enhanced Dark Mode Toggle v3.1.0';
         ui.appendChild(versionInfo);
 
         document.body.appendChild(ui);
         updateExclusionListDisplay();
+    }
+
+    /**
+     * Create a site profiles section for the UI
+     * @return {HTMLElement} Section element
+     */
+    function createSiteProfilesSection() {
+        const section = createSettingSection('Site Profiles');
+        
+        // Profile selector
+        const profileLabel = createLabel('Apply Profile:');
+        uiElements.profileSelect = document.createElement('select');
+        uiElements.profileSelect.id = 'profileSelect';
+        uiElements.profileSelect.setAttribute('aria-label', 'Site Profile');
+        
+        // Add profiles from the predefined list
+        Object.entries(SITE_PROFILES).forEach(([key, value]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = key.charAt(0) + key.slice(1).toLowerCase(); // Format nicely
+            option.selected = settings.currentSiteType === value;
+            uiElements.profileSelect.appendChild(option);
+        });
+        
+        uiElements.profileSelect.addEventListener('change', (e) => {
+            applySiteProfile(e.target.value);
+            savePerSiteSettings();
+        });
+        
+        section.appendChild(createFormGroup(profileLabel, uiElements.profileSelect));
+        
+        // Save as profile button
+        const saveProfileButton = createButton('saveProfileButton', 'Save Current Settings for This Site', () => {
+            savePerSiteSettings();
+            showToast(`Settings for ${window.location.hostname} have been saved.`);
+        });
+        saveProfileButton.style.width = '100%';
+        section.appendChild(saveProfileButton);
+        
+        // Reset site settings button
+        const resetSiteButton = createButton('resetSiteButton', 'Reset Settings for This Site', async () => {
+            if (confirm(`Are you sure you want to reset the settings for ${window.location.hostname}?`)) {
+                const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + getCurrentSiteIdentifier();
+                const customCssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
+                
+                await GM.deleteValue(siteKey);
+                await GM.deleteValue(customCssKey);
+                
+                // Reset to global settings
+                await loadSettings();
+                
+                // Reset custom CSS
+                currentSiteCustomCSS = '';
+                
+                updateUIValues();
+                updateDarkReaderConfig();
+                
+                showToast(`Settings for ${window.location.hostname} have been reset.`);
+            }
+        });
+        resetSiteButton.style.width = '100%';
+        resetSiteButton.style.marginTop = '5px';
+        section.appendChild(resetSiteButton);
+        
+        // Site-specific information
+        const siteInfoDiv = document.createElement('div');
+        siteInfoDiv.className = 'site-info';
+        siteInfoDiv.innerHTML = `
+            <p><strong>Current Site:</strong> ${window.location.hostname}</p>
+            <p><strong>Detected Type:</strong> <span id="detectedType">${settings.currentSiteType || detectSiteType() || 'Unknown'}</span></p>
+            <p><strong>Has Custom Settings:</strong> <span id="hasCustomSettings">Loading...</span></p>
+        `;
+        section.appendChild(siteInfoDiv);
+        
+        // Add explanation
+        const profileExplanation = document.createElement('p');
+        profileExplanation.className = 'info-text';
+        profileExplanation.textContent = 'Site profiles optimize dark mode for different types of websites. Your settings for each site are remembered.';
+        section.appendChild(profileExplanation);
+        
+        return section;
     }
 
     /**
@@ -2431,7 +3372,7 @@
      * @param {number} value - New value
      */
     function updateValueDisplay(id, value) {
-        const element = document.getElementById(id);
+        const element = getElement(id);
         if (element) element.textContent = value;
     }
 
@@ -2472,10 +3413,30 @@
     }
 
     /**
+     * Update site profile information
+     */
+    function updateSiteProfileInfo() {
+        const detectedTypeElement = getElement('detectedType');
+        const hasCustomSettingsElement = getElement('hasCustomSettings');
+        
+        if (detectedTypeElement) {
+            detectedTypeElement.textContent = settings.currentSiteType || detectSiteType() || 'Default';
+        }
+        
+        if (hasCustomSettingsElement) {
+            // Check if this site has stored settings
+            const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + getCurrentSiteIdentifier();
+            GM.getValue(siteKey, null).then(value => {
+                hasCustomSettingsElement.textContent = value ? 'Yes' : 'No';
+            });
+        }
+    }
+
+    /**
      * Create a button to toggle the settings UI
      */
     function createToggleUIButton() {
-        const existingButton = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
+        const existingButton = getElement(ELEMENT_IDS.TOGGLE_UI_BUTTON);
         if (existingButton) return;
         
         const toggleUIButton = createButton(ELEMENT_IDS.TOGGLE_UI_BUTTON, 'Settings', toggleUI);
@@ -2491,7 +3452,7 @@
      * Update position of the settings button based on offset setting
      */
     function updateSettingsButtonPosition() {
-        const button = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
+        const button = getElement(ELEMENT_IDS.TOGGLE_UI_BUTTON);
         if (button) {
             button.style.right = `${settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset}px`;
         }
@@ -2501,7 +3462,7 @@
      * Toggle the visibility of the settings UI
      */
     function toggleUI() {
-        const ui = document.getElementById(ELEMENT_IDS.UI);
+        const ui = getElement(ELEMENT_IDS.UI);
         uiVisible = !uiVisible;
         
         if (uiVisible) {
@@ -2511,6 +3472,9 @@
         } else {
             ui.classList.remove('visible');
             ui.setAttribute('aria-hidden', 'true');
+            
+            // Run cleanup when UI is hidden
+            cleanupResources();
         }
     }
 
@@ -2537,6 +3501,11 @@
         // Update settings button offset value if it exists
         if (uiElements.settingsButtonOffsetInput) {
             uiElements.settingsButtonOffsetInput.value = settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset;
+        }
+        
+        // Update site profile selector
+        if (uiElements.profileSelect) {
+            uiElements.profileSelect.value = settings.currentSiteType || detectSiteType() || 'default';
         }
         
         // Update extreme mode values
@@ -2569,13 +3538,14 @@
         }
         
         updateExclusionListDisplay();
+        updateSiteProfileInfo();
     }
 
     /**
      * Apply UI styles dynamically based on settings
      */
     function applyUIStyles() {
-        const ui = document.getElementById(ELEMENT_IDS.UI);
+        const ui = getElement(ELEMENT_IDS.UI);
         if (ui) {
             ui.style.backgroundColor = settings.themeColor;
             ui.style.color = settings.textColor;
@@ -2583,7 +3553,7 @@
         }
 
         // If previous styles exist, remove them
-        const existingStyle = document.getElementById('darkModeToggleStyle');
+        const existingStyle = getElement('darkModeToggleStyle');
         if (existingStyle) existingStyle.remove();
 
         // Add updated styles
@@ -2973,7 +3943,7 @@
             if (typeof GM.registerMenuCommand !== 'undefined') {
                 GM.registerMenuCommand('Toggle Dark Mode', () => toggleDarkMode());
                 GM.registerMenuCommand('Open Settings', () => {
-                    const ui = document.getElementById(ELEMENT_IDS.UI);
+                    const ui = getElement(ELEMENT_IDS.UI);
                     if (ui && !uiVisible) {
                         toggleUI();
                     }
@@ -2998,6 +3968,125 @@
 
     /**
      * ------------------------
+     * OPTIMIZED MUTATION OBSERVER
+     * ------------------------
+     */
+    
+    /**
+     * Optimized setup for the mutation observer
+     * @return {Array<MutationObserver>} Observers for potential cleanup
+     */
+    function setupMutationObserver() {
+        const config = {
+            childList: true,
+            subtree: true,
+            attributes: false
+        };
+        
+        // Use a more efficient debounce for processing mutations
+        const debouncedHandler = debounce(() => {
+            // Only check for critical UI elements and recreate if missing
+            const buttonExists = getElement(ELEMENT_IDS.BUTTON);
+            if (!buttonExists) {
+                log('info', 'Dark Mode Toggle: Button missing, recreating...');
+                createToggleButton();
+                updateButtonPosition();
+                updateButtonState();
+            }
+
+            const toggleUIButtonExists = getElement(ELEMENT_IDS.TOGGLE_UI_BUTTON);
+            if (!toggleUIButtonExists) {
+                log('info', 'Dark Mode Toggle: Settings button missing, recreating...');
+                createToggleUIButton();
+            }
+
+            // Only recreate UI when it's supposed to be visible but is missing
+            if (uiVisible) {
+                const uiExists = getElement(ELEMENT_IDS.UI);
+                if (!uiExists) {
+                    log('info', 'Dark Mode Toggle: UI missing, recreating...');
+                    createUI();
+                    updateUIValues();
+                    applyUIStyles();
+                    // Make it visible again since creating it doesn't automatically show it
+                    const newUI = getElement(ELEMENT_IDS.UI);
+                    if (newUI) {
+                        newUI.classList.add('visible');
+                        newUI.setAttribute('aria-hidden', 'false');
+                    }
+                }
+            }
+        }, 100, { leading: false, trailing: true });
+        
+        // Use a separate throttled function for extreme mode operations
+        const throttledExtremeModeHandler = throttle(() => {
+            if (darkModeEnabled && extremeModeActive) {
+                // Check for new shadow roots with rate limiting
+                if (!pendingOperations.has('shadowScan')) {
+                    pendingOperations.add('shadowScan');
+                    requestAnimationFrame(() => {
+                        findShadowRoots();
+                        pendingOperations.delete('shadowScan');
+                    });
+                }
+                
+                // Prioritize critical elements like fixed headers/menus
+                requestAnimationFrame(() => {
+                    if (extremeModeActive) {
+                        forceElementStyles('body', { 
+                            backgroundColor: '#121212 !important', 
+                            color: '#ddd !important' 
+                        });
+                        
+                        forceElementStyles('header, nav, [role="banner"], [role="navigation"]', { 
+                            backgroundColor: '#1a1a1a !important', 
+                            color: '#ddd !important' 
+                        });
+                    }
+                });
+            }
+        }, 500);
+        
+        // Create a more focused observer
+        const observer = new MutationObserver(mutations => {
+            // Quick check if we need to process these mutations
+            const hasRelevantMutations = mutations.some(mutation => {
+                // Only care about added nodes for UI reconstruction
+                return mutation.type === 'childList' && mutation.addedNodes.length > 0;
+            });
+            
+            if (hasRelevantMutations) {
+                debouncedHandler();
+            }
+            
+            // Extreme mode handling in a separate observer with different timing
+            if (darkModeEnabled && extremeModeActive) {
+                throttledExtremeModeHandler();
+            }
+        });
+
+        // Observe body only instead of the entire document
+        if (document.body) {
+            observer.observe(document.body, config);
+        }
+        
+        // Also set up a minimal observer for the head to catch style changes
+        const headObserver = new MutationObserver(throttledExtremeModeHandler);
+        if (document.head) {
+            headObserver.observe(document.head, { 
+                childList: true, 
+                subtree: false
+            });
+        }
+        
+        // Store observers for reference
+        observers = [observer, headObserver];
+        
+        return observers;
+    }
+
+    /**
+     * ------------------------
      * INITIALIZATION & LIFECYCLE
      * ------------------------
      */
@@ -3010,7 +4099,7 @@
         if (isInitialized) return;
         isInitialized = true;
         
-        log('info', 'Enhanced Dark Mode Toggle: Initializing...');
+        log('info', 'Enhanced Dark Mode Toggle: Initializing v3.1.0...');
         
         await loadSettings();
         await loadPerSiteSettings();
@@ -3049,77 +4138,31 @@
             collectSiteInfo();
         }
         
+        // Apply enhanced features
+        enhancedInit();
+        
         log('info', 'Enhanced Dark Mode Toggle: Initialization complete');
     }
 
     /**
-     * Setup DOM mutation observer to ensure UI elements persist
+     * Enhanced features initialization
      */
-    function setupMutationObserver() {
-        // More targeted mutation observer approach
-        const observer = new MutationObserver(debounce(() => {
-            // Only check for critical UI elements and recreate if missing
-            const buttonExists = document.getElementById(ELEMENT_IDS.BUTTON);
-            if (!buttonExists) {
-                log('info', 'Dark Mode Toggle: Button missing, recreating...');
-                createToggleButton();
-                updateButtonPosition();
-                updateButtonState();
-            }
-
-            const toggleUIButtonExists = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
-            if (!toggleUIButtonExists) {
-                log('info', 'Dark Mode Toggle: Settings button missing, recreating...');
-                createToggleUIButton();
-            }
-
-            // Only recreate UI when it's supposed to be visible but is missing
-            if (uiVisible) {
-                const uiExists = document.getElementById(ELEMENT_IDS.UI);
-                if (!uiExists) {
-                    log('info', 'Dark Mode Toggle: UI missing, recreating...');
-                    createUI();
-                    updateUIValues();
-                    applyUIStyles();
-                    // Make it visible again since creating it doesn't automatically show it
-                    const newUI = document.getElementById(ELEMENT_IDS.UI);
-                    if (newUI) {
-                        newUI.classList.add('visible');
-                        newUI.setAttribute('aria-hidden', 'false');
-                    }
-                }
-            }
-            
-            // Extend this to react to theme changes in the website itself
-            if (darkModeEnabled && extremeModeActive) {
-                // Check for new shadow roots
-                findShadowRoots();
-                
-                // Re-apply extreme mode overrides on critical elements
-                forceElementStyles('body', { 
-                    backgroundColor: '#121212 !important', 
-                    color: '#ddd !important' 
-                });
-                
-                forceElementStyles('main, article, section, [role="main"]', { 
-                    backgroundColor: '#1a1a1a !important', 
-                    color: '#ddd !important' 
-                });
-            }
-        }, 300));
-
-        // Observe the body and head for changes
-        observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true,
-            attributes: false,
-            characterData: false
-        });
+    function enhancedInit() {
+        // Enhance the toggle button with additional interactions
+        enhanceToggleButton();
         
-        // Also observe document for more complete coverage
-        observer.observe(document, {
-            childList: true,
-            attributes: false
+        // Add styles for the new features
+        addEnhancementStyles();
+        
+        // Show a welcome toast on first run or after update
+        GM.getValue('lastVersion', null).then(version => {
+            if (version !== '3.1.0') {
+                GM.setValue('lastVersion', '3.1.0');
+                
+                setTimeout(() => {
+                    showToast('Enhanced Dark Mode Toggle Updated! Right-click for new features.', 4000);
+                }, 2000);
+            }
         });
     }
 
