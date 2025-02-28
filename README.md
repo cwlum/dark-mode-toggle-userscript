@@ -28,7 +28,7 @@ A powerful user script that adds a customizable dark mode toggle button to any w
 ## Installation
 
 1.  Install a userscript manager such as [Tampermonkey](https://www.tampermonkey.net/) (Chrome, Firefox, Safari, Edge).
-2.  Click the following link to install the script: [https://github.com/cwlum/dark-mode-toggle-userscript/raw/main/dark-mode-toggle.user.js](https://github.com/cwlum/dark-mode-toggle-userscript/raw/main/dark-mode-toggle.user.js)
+2.  Click the following link to install the script: [dark-mode-toggle.user.js](https://github.com/cwlum/dark-mode-toggle-userscript/raw/main/dark-mode-toggle.user.js)
 3.  Tampermonkey will prompt you to install the script. Click "Install".
 
 ## Usage
