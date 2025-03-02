@@ -1,8 +1,8 @@
 # Enhanced Dark Mode Toggle User Script
 
-![Version](https://img.shields.io/badge/version-3.0.0-orange)
+![Version](https://img.shields.io/badge/version-3.1.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Last Updated](https://img.shields.io/badge/last%20updated-2025--02--28-informational)
+![Last Updated](https://img.shields.io/badge/last%20updated-2025--03--02-informational)
 
 A powerful user script that adds a customizable dark mode toggle button to any website, with enhanced compatibility and advanced features to work on even the most resistant sites.
 
@@ -13,6 +13,12 @@ A powerful user script that adds a customizable dark mode toggle button to any w
 *   **Dynamic Selectors & Shadow DOM Support:** Automatically detects and applies dark mode to dynamically loaded content and shadow DOM elements.
 *   **Custom CSS Per Site:** Add your own custom CSS rules for specific websites that persist between visits.
 *   **Site-Specific Fixes:** Built-in optimizations for problematic sites like YouTube, Twitter/X, Facebook, Reddit, and GitHub.
+*   **Device-Aware Optimization:** Automatically detects device type, performance capabilities, and battery status to optimize functionality.
+*   **Adaptive Performance Modes:** Adjusts scanning frequency and processing intensity based on device capabilities (High/Medium/Low).
+*   **Mobile & Touch Support:** Optimized button sizes and positioning for touch devices and mobile screens.
+*   **Reduced Motion Options:** Accessibility settings to reduce animations for users who prefer less motion.
+*   **Low Power Mode:** Battery-aware features that reduce resource usage when battery is low.
+*   **Per-Site Position Settings:** Remember button position separately for each website.
 *   **Diagnostic System:** Troubleshoot issues with specific websites and generate diagnostic reports.
 *   **Easy Dark Mode Toggle:**  Quickly enable or disable dark mode with a single click.
 *   **Customizable UI:**  Adjust the position, colors, font, and other UI elements to match your preferences.
@@ -50,6 +56,7 @@ After installation, a dark mode toggle button will appear on every website you v
     *   Change the UI theme color and text color.
     *   Set the font family for the UI.
     *   Add websites to the exclusion list with support for wildcards.
+    *   Configure device optimization settings for better performance.
     *   Generate diagnostic reports to troubleshoot issues.
     *   Import and export your settings for backup or sharing.
     *   Reset all settings to their defaults.
@@ -58,22 +65,32 @@ After installation, a dark mode toggle button will appear on every website you v
 
 The following configuration options are available in the settings panel:
 
+### Site-Specific Settings
+*   **Enable Per-Site Settings:** Save different settings for each website.
+*   **Use Global Button Position:** Choose whether to use global position settings or site-specific position.
+*   **Current Site Info:** Shows the identifier for the current website.
+
 ### Button Position
 *   **Position:** The position of the toggle button on the screen.
 *   **Offset X/Y:** The horizontal/vertical offset of the toggle button from the edge of the screen (in pixels).
 *   **Settings Button Offset:** Adjust the position of the settings button on the screen.
 
+### Device Optimization
+*   **Enable Device Optimization:** Automatically adjust performance based on device capabilities.
+*   **Reduce Animations:** Minimize animations for better performance or accessibility.
+*   **Low Power Mode:** Conserve battery by reducing processing intensity when battery is low.
+
 ### Theme Settings
 *   **Theme Presets:** Quickly apply predefined visual themes (Default, High Contrast, Low Contrast, Sepia, Night Mode, Ultra Dark, Midnight).
 *   **Brightness/Contrast/Sepia:** Fine-tune the dark mode filter appearance (0-150).
 
-### Extreme Mode (New)
+### Extreme Mode
 *   **Enable Extreme Mode:** Force dark theme on resistant websites.
 *   **Force Dark Elements:** Actively identify and convert light elements to dark mode.
 *   **Use Custom CSS:** Apply custom CSS rules specific to the current site.
 *   **Custom CSS Editor:** Write site-specific CSS rules that persist between visits.
 
-### Advanced Compatibility (New)
+### Advanced Compatibility
 *   **Dynamic Monitoring:** Monitor the page for changes and apply dark mode to new elements.
 *   **Shadow DOM Support:** Detect and apply dark mode to shadow DOM elements.
 *   **Deep Scanning:** Perform comprehensive analysis of page elements for better dark mode coverage.
@@ -90,7 +107,7 @@ The following configuration options are available in the settings panel:
 ### Site Exclusions
 *   **Site Exclusion List:** A list of websites where dark mode should not be applied. Supports wildcards (e.g., "example.com/*").
 
-### Diagnostics (New)
+### Diagnostics
 *   **Enable Diagnostics:** Collect information about website compatibility issues.
 *   **Log Level:** Set the detail level for diagnostic logging (error, warn, info, debug).
 *   **Diagnostic Report:** Generate a detailed report for troubleshooting issues.
@@ -123,7 +140,19 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <summary><strong>Changelog</strong> (Click to expand)</summary>
 ---
 
-**v3.0.0 (Current)**
+**v3.1.0 (Current)**
+
+* **Device-Aware Optimization:** Added automatic detection of device type, performance capabilities, and battery status
+* **Adaptive Performance Modes:** Added High/Medium/Low performance modes with automatic adjustment
+* **Mobile & Touch Support:** Improved usability on mobile devices with optimized button sizes
+* **Per-Site Position Settings:** Added ability to remember button position separately for each website
+* **Battery-Aware Features:** Added low power mode that activates automatically on low battery
+* **Reduced Motion Options:** Added accessibility settings to reduce animations
+* **Performance Improvements:** Optimized processing and scanning for better efficiency
+* **User Interface Enhancements:** Added device information display in settings
+* **Enhanced Diagnostics:** Added device and performance information to diagnostic reports
+
+**v3.0.0**
 
 * **Universal Compatibility:** Complete overhaul to ensure dark mode works on virtually all websites.
 * **Extreme Mode:** Added powerful new mode to force dark theme on resistant websites.
