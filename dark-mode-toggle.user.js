@@ -3,7 +3,7 @@
 // @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Ultra enhanced dark mode toggle with per-site settings, performance optimization, and device adaptation
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      3.0.0
+// @version      3.1.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
