@@ -139,7 +139,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <details>
 <summary><strong>Changelog</strong> (Click to expand)</summary>
 ---
-**v3.2.0 (Current)**
+**v3.2.0**
    
 * **New Feature: Greyscale Mode:** Added an option in the Appearance section to toggle a greyscale filter.
 * **New Feature: Color Filter:** Added an option in the Appearance section to toggle a basic color filter (hue-rotate).
