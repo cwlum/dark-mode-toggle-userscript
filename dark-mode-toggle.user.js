@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         ☀️Dark Mode Toggle Enhanced (v3.2.0)
-// @author       Cervantes Wu (http://www.mriwu.us) & Gemini
+// @name         ☀️Dark Mode Toggle
+// @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Ultra enhanced dark mode toggle with per-site settings, performance optimization, device adaptation, greyscale mode, etc.
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
 // @version      3.2.0
