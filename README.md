@@ -139,8 +139,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <details>
 <summary><strong>Changelog</strong> (Click to expand)</summary>
 ---
+**v3.2.0 (Current)**
+   
+* **New Feature: Greyscale Mode:** Added an option in the Appearance section to toggle a greyscale filter.
+* **New Feature: Color Filter:** Added an option in the Appearance section to toggle a basic color filter (hue-rotate).
+* **Memory Optimization:** Implemented measures to clean up event listeners and stored original styles more effectively.
+* **Code Refactoring:** Broke down the createUI function into smaller, more manageable functions for each settings section.
+* **Performance Tuning:** Reviewed and adjusted performance mode settings.
 
-**v3.1.0 (Current)**
+**v3.1.0**
 
 * **Device-Aware Optimization:** Added automatic detection of device type, performance capabilities, and battery status
 * **Adaptive Performance Modes:** Added High/Medium/Low performance modes with automatic adjustment
