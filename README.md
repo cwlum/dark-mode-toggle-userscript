@@ -1,8 +1,8 @@
 # Enhanced Dark Mode Toggle User Script
 
-![Version](https://img.shields.io/badge/version-3.2.0-orange)
+![Version](https://img.shields.io/badge/version-3.1.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
-![Last Updated](https://img.shields.io/badge/last%20updated-2025--04--19-informational)
+![Last Updated](https://img.shields.io/badge/last%20updated-2025--04--23-informational)
 
 A powerful user script that adds a customizable dark mode toggle button to any website, with enhanced compatibility and advanced features to work on even the most resistant sites.
 
