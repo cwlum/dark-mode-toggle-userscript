@@ -25,9 +25,156 @@
     'use strict';
 
     /**
-     * ------------------------
-     * CONSTANTS
-     * ------------------------
+     * =========================================================================
+     * UTILITY MODULE
+     * =========================================================================
+     */
+    const Utils = {
+        /**
+         * Debounce function to limit how often a function is executed
+         * @param {Function} func - Function to debounce
+         * @param {number} delay - Delay in ms
+         * @param {boolean} [immediate=false] - Whether to execute immediately
+         * @return {Function} Debounced function
+         */
+        debounce(func, delay, immediate = false) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                const callNow = immediate && !timeout;
+
+                clearTimeout(timeout);
+
+                timeout = setTimeout(() => {
+                    timeout = null;
+                    if (!immediate) func.apply(context, args);
+                }, delay);
+
+                if (callNow) func.apply(context, args);
+            };
+        },
+
+        /**
+         * Throttle function to limit how often a function is executed
+         * @param {Function} func - Function to throttle
+         * @param {number} limit - Limit in ms
+         * @param {boolean} [trailing=false] - Whether to execute after throttle period
+         * @return {Function} Throttled function
+         */
+        throttle(func, limit, trailing = false) {
+            let lastFunc;
+            let lastRan;
+            return function(...args) {
+                const context = this;
+
+                if (!lastRan) {
+                    func.apply(context, args);
+                    lastRan = Date.now();
+                    return;
+                }
+
+                clearTimeout(lastFunc);
+
+                lastFunc = setTimeout(function() {
+                    if (Date.now() - lastRan >= limit) {
+                        func.apply(context, args);
+                        lastRan = Date.now();
+                    }
+                }, trailing ? limit - (Date.now() - lastRan) : 0);
+            };
+        },
+
+        /**
+         * Deep merge two objects.
+         * @param {Object} target - The target object
+         * @param {Object} source - The source object
+         * @return {Object} The merged object
+         */
+        deepMerge(target, source) {
+            const output = { ...target };
+
+            if (this.isObject(target) && this.isObject(source)) {
+                Object.keys(source).forEach(key => {
+                    if (this.isObject(source[key])) {
+                        if (!(key in target)) {
+                            Object.assign(output, { [key]: source[key] });
+                        } else {
+                            output[key] = this.deepMerge(target[key], source[key]);
+                        }
+                    } else {
+                        Object.assign(output, { [key]: source[key] });
+                    }
+                });
+            }
+
+            return output;
+        },
+
+        /**
+         * Check if a variable is an object
+         * @param {*} item - The item to check
+         * @return {boolean} True if the item is an object
+         */
+        isObject(item) {
+            return (item && typeof item === 'object' && !Array.isArray(item));
+        },
+
+        /**
+         * Log with level filtering based on settings
+         * @param {string} level - Log level
+         * @param {string} message - Message to log
+         * @param {any} data - Optional data to log
+         */
+        log(level, message, data = null) {
+            const logLevels = { error: 0, warn: 1, info: 2, debug: 3 };
+            const settingsLevel = settings.diagnostics?.logLevel ?? 'info';
+
+            if (logLevels[level] <= logLevels[settingsLevel]) {
+                const logMessage = `[Dark Mode Toggle] ${message}`;
+                const logger = console[level] || console.log;
+                logger(logMessage, data ?? '');
+
+                if (settings.diagnostics?.enabled && (level === 'error' || level === 'warn')) {
+                    diagnosticsData.issues.push({
+                        type: level,
+                        message: message,
+                        timestamp: new Date().toISOString(),
+                        data: data ? JSON.stringify(data) : null
+                    });
+                }
+            }
+        },
+
+        /**
+         * Create a button element with specified properties
+         * @param {string} id - Button ID
+         * @param {string} text - Button text content
+         * @param {Function} onClick - Click handler
+         * @return {HTMLButtonElement} Created button
+         */
+        createButton(id, text, onClick) {
+            const button = document.createElement('button');
+            button.id = id;
+            button.textContent = text;
+            button.addEventListener('click', onClick, { passive: true });
+            eventListeners.push({ element: button, type: 'click', handler: onClick });
+            return button;
+        },
+
+        /**
+         * Gets the host for site matching
+         * @return {string} Hostname
+         */
+        getCurrentSiteIdentifier() {
+            return window.location.hostname;
+        },
+    };
+
+
+    /**
+     * =========================================================================
+     * CONSTANTS & STATE
+     * =========================================================================
      */
     const ELEMENT_IDS = {
         BUTTON: 'darkModeToggle',
@@ -282,7 +429,7 @@
      * GLOBAL STATE & UI REFERENCES
      * ------------------------
      */
-    let settings = { ...DEFAULT_SETTINGS };
+    let settings = {};
     let uiVisible = false;
     let darkModeEnabled = false;
     let uiElements = {};
@@ -317,66 +464,10 @@
     let performanceMode = DEVICE_PERFORMANCE.HIGH; // Current performance mode
 
     /**
-     * ------------------------
-     * UTILITY FUNCTIONS
-     * ------------------------
+     * =========================================================================
+     * MAIN SCRIPT LOGIC
+     * =========================================================================
      */
-
-    /**
-     * Debounce function to limit how often a function is executed
-     * Optimized version with immediate option
-     * @param {Function} func - Function to debounce
-     * @param {number} delay - Delay in ms
-     * @param {boolean} [immediate=false] - Whether to execute immediately
-     * @return {Function} Debounced function
-     */
-    function debounce(func, delay, immediate = false) {
-        let timeout;
-        return function(...args) {
-            const context = this;
-            const callNow = immediate && !timeout;
-
-            clearTimeout(timeout);
-
-            timeout = setTimeout(() => {
-                timeout = null;
-                if (!immediate) func.apply(context, args);
-            }, delay);
-
-            if (callNow) func.apply(context, args);
-        };
-    }
-
-    /**
-     * Throttle function to limit how often a function is executed
-     * Enhanced version with trailing option
-     * @param {Function} func - Function to throttle
-     * @param {number} limit - Limit in ms
-     * @param {boolean} [trailing=false] - Whether to execute after throttle period
-     * @return {Function} Throttled function
-     */
-    function throttle(func, limit, trailing = false) {
-        let lastFunc;
-        let lastRan;
-        return function(...args) {
-            const context = this;
-
-            if (!lastRan) {
-                func.apply(context, args);
-                lastRan = Date.now();
-                return;
-            }
-
-            clearTimeout(lastFunc);
-
-            lastFunc = setTimeout(function() {
-                if (Date.now() - lastRan >= limit) {
-                    func.apply(context, args);
-                    lastRan = Date.now();
-                }
-            }, trailing ? limit - (Date.now() - lastRan) : 0);
-        };
-    }
 
     /**
      * Adaptive throttle/debounce based on device performance
@@ -389,62 +480,9 @@
         const delay = delays[performanceMode] || delays[DEVICE_PERFORMANCE.MEDIUM];
 
         if (type === 'throttle') {
-            return throttle(func, delay, performanceMode !== DEVICE_PERFORMANCE.LOW);
+            return Utils.throttle(func, delay, performanceMode !== DEVICE_PERFORMANCE.LOW);
         } else { // debounce
-            return debounce(func, delay, performanceMode === DEVICE_PERFORMANCE.HIGH);
-        }
-    }
-
-    /**
-     * Log with level filtering based on settings
-     * @param {string} level - Log level
-     * @param {string} message - Message to log
-     * @param {any} data - Optional data to log
-     */
-    function log(level, message, data = null) {
-        const logLevels = {
-            error: 0,
-            warn: 1,
-            info: 2,
-            debug: 3
-        };
-
-        const settingsLevel = settings.diagnostics && settings.diagnostics.logLevel ?
-            settings.diagnostics.logLevel : 'info';
-
-        if (logLevels[level] <= logLevels[settingsLevel]) {
-            const logMessage = `[Dark Mode Toggle] ${message}`;
-
-            switch (level) {
-                case 'error':
-                    console.error(logMessage, data || '');
-                    if (settings.diagnostics && settings.diagnostics.enabled) {
-                        diagnosticsData.issues.push({
-                            type: 'error',
-                            message: message,
-                            timestamp: new Date().toISOString(),
-                            data: data ? JSON.stringify(data) : null
-                        });
-                    }
-                    break;
-                case 'warn':
-                    console.warn(logMessage, data || '');
-                    if (settings.diagnostics && settings.diagnostics.enabled) {
-                        diagnosticsData.issues.push({
-                            type: 'warning',
-                            message: message,
-                            timestamp: new Date().toISOString(),
-                            data: data ? JSON.stringify(data) : null
-                        });
-                    }
-                    break;
-                case 'info':
-                    console.info(logMessage, data || '');
-                    break;
-                case 'debug':
-                    console.debug(logMessage, data || '');
-                    break;
-            }
+            return Utils.debounce(func, delay, performanceMode === DEVICE_PERFORMANCE.HIGH);
         }
     }
 
@@ -455,48 +493,17 @@
      */
     function isSiteExcluded(url) {
         return settings.exclusionList.some(pattern => {
-            // Support basic wildcards
-            if (pattern.includes('*')) {
-                const regexPattern = pattern
-                    .replace(/\./g, '\\.')
-                    .replace(/\*/g, '.*');
-                return new RegExp('^' + regexPattern + '$').test(url);
+            try {
+                if (pattern.includes('*')) {
+                    const regexPattern = pattern.replace(/\./g, '\\.').replace(/\*/g, '.*');
+                    return new RegExp(`^${regexPattern}$`).test(url);
+                }
+                return url.includes(pattern);
+            } catch (e) {
+                Utils.log('error', `Invalid exclusion pattern: ${pattern}`, e);
+                return false;
             }
-            return url.startsWith(pattern);
         });
-    }
-
-    /**
-     * Create a button element with specified properties - performance optimized
-     * @param {string} id - Button ID
-     * @param {string} text - Button text content
-     * @param {Function} onClick - Click handler
-     * @return {HTMLButtonElement} Created button
-     */
-    function createButton(id, text, onClick) {
-        const button = document.createElement('button');
-        button.id = id;
-        button.textContent = text;
-
-        // Use passive listeners when possible for better performance
-        button.addEventListener('click', onClick, { passive: false });
-
-        // Track event listener for potential cleanup
-        eventListeners.push({
-            element: button,
-            type: 'click',
-            handler: onClick
-        });
-
-        return button;
-    }
-
-    /**
-     * Gets the host+path without protocol for better site matching
-     * @return {string} Host and path
-     */
-    function getCurrentSiteIdentifier() {
-        return window.location.hostname;
     }
 
     /**
@@ -504,18 +511,10 @@
      * @return {Object|null} Site info if problematic, null otherwise
      */
     function getProblematicSiteInfo() {
-        const hostname = window.location.hostname;
-
-        for (const site in PROBLEMATIC_SITES) {
-            if (hostname.includes(site)) {
-                return {
-                    ...PROBLEMATIC_SITES[site],
-                    key: site
-                };
-            }
-        }
-
-        return null;
+        const hostname = Utils.getCurrentSiteIdentifier();
+        return Object.entries(PROBLEMATIC_SITES)
+            .find(([site]) => hostname.includes(site))
+            ?.map(([key, value]) => ({ ...value, key }))[0] ?? null;
     }
 
     /**
@@ -525,7 +524,7 @@
         const siteInfo = getProblematicSiteInfo();
         if (!siteInfo) return;
 
-        log('info', `Applying fixes for problematic site: ${siteInfo.key}`, siteInfo);
+        Utils.log('info', `Applying fixes for problematic site: ${siteInfo.key}`, siteInfo);
 
         switch (siteInfo.fixMethod) {
             case 'useCustomCss':
@@ -533,19 +532,17 @@
                 break;
 
             case 'forceElementStyles':
-                if (siteInfo.selectors && Array.isArray(siteInfo.selectors)) {
-                    siteInfo.selectors.forEach(({ selector, styles }) => {
-                        forceElementStyles(selector, styles);
-                    });
-                }
+                siteInfo.selectors?.forEach(({ selector, styles }) => {
+                    forceElementStyles(selector, styles);
+                });
                 break;
 
             default:
-                log('warn', `Unknown fix method: ${siteInfo.fixMethod}`);
+                Utils.log('warn', `Unknown fix method: ${siteInfo.fixMethod}`);
         }
 
         // Apply default button position for problematic site if available
-        if (siteInfo.defaultButtonPosition && currentSiteSettings && !currentSiteSettings.useGlobalPosition) {
+        if (siteInfo.defaultButtonPosition && currentSiteSettings?.useGlobalPosition === false) {
             currentSiteSettings.position = siteInfo.defaultButtonPosition;
             savePerSiteSettings();
             updateButtonPosition();
@@ -583,22 +580,20 @@
             const elements = Array.from(document.querySelectorAll(selector));
 
             // Also try to find elements in shadow DOM if enabled
-            if (settings.dynamicSelectors && settings.dynamicSelectors.detectShadowDOM) {
+            if (settings.dynamicSelectors?.detectShadowDOM) {
                 shadowRoots.forEach(root => {
                     try {
-                        const shadowElements = Array.from(root.querySelectorAll(selector));
-                        elements.push(...shadowElements);
+                        elements.push(...root.querySelectorAll(selector));
                     } catch (error) {
-                        log('debug', `Error querying shadow DOM: ${error.message}`, { selector, root });
+                        Utils.log('debug', `Error querying shadow DOM: ${error.message}`, { selector, root });
                     }
                 });
             }
 
-            if (elements.length > 0) {
-                elements.forEach(element => applyStylesToElement(element, styles));
-            }
+            elements.forEach(applyStylesToElement, styles);
+
         } catch (error) {
-            log('error', `Error forcing element styles: ${error.message}`, { selector, styles });
+            Utils.log('error', `Error forcing element styles: ${error.message}`, { selector, styles });
         }
     }
 
@@ -630,23 +625,20 @@
      */
     function injectCustomCSS(css, id) {
         // Remove existing style with same ID if it exists
-        const existingStyle = document.getElementById(id);
-        if (existingStyle) {
-            existingStyle.remove();
-            customStyleElements = customStyleElements.filter(el => el.id !== id);
-        }
+        document.getElementById(id)?.remove();
+        customStyleElements = customStyleElements.filter(el => el.id !== id);
 
         // Create and inject new style
         try {
             const style = document.createElement('style');
             style.id = id;
-            style.innerHTML = css;
-            document.head.appendChild(style);
+            style.textContent = css;
+            (document.head || document.documentElement).appendChild(style);
             customStyleElements.push(style);
 
-            log('debug', `Injected custom CSS with ID: ${id}`, { length: css.length });
+            Utils.log('debug', `Injected custom CSS with ID: ${id}`, { length: css.length });
         } catch (error) {
-            log('error', `Error injecting custom CSS: ${error.message}`, { id });
+            Utils.log('error', `Error injecting custom CSS: ${error.message}`, { id });
         }
     }
 
@@ -654,25 +646,25 @@
      * Collect website information for diagnostics
      */
     function collectSiteInfo() {
-        if (!settings.diagnostics || !settings.diagnostics.enabled) return;
+        if (!settings.diagnostics?.enabled) return;
 
         try {
             diagnosticsData.siteInfo = {
                 url: window.location.href,
-                domain: window.location.hostname,
+                domain: Utils.getCurrentSiteIdentifier(),
                 title: document.title,
                 theme: detectSiteThemeSettings(),
                 shadowDOMCount: shadowRoots.size,
                 iframeCount: document.querySelectorAll('iframe').length,
                 customStylesCount: customStyleElements.length,
                 forcedElementsCount: forcedElementsCount,
-                problematicSite: getProblematicSiteInfo() ? true : false,
+                problematicSite: !!getProblematicSiteInfo(),
                 screenWidth: window.innerWidth,
                 screenHeight: window.innerHeight,
-                deviceInfo: deviceInfo
+                deviceInfo
             };
         } catch (error) {
-            log('error', `Error collecting site info: ${error.message}`);
+            Utils.log('error', `Error collecting site info: ${error.message}`);
         }
     }
 
@@ -902,9 +894,7 @@
      * @param {Node} root - Root node to start scanning from
      */
     function findShadowRoots(root = document.documentElement) {
-        if (!settings.dynamicSelectors || !settings.dynamicSelectors.detectShadowDOM) {
-            return;
-        }
+        if (!settings.dynamicSelectors?.detectShadowDOM) return;
 
         // Use a more efficient approach based on device performance
         if (performanceMode === DEVICE_PERFORMANCE.LOW) {
@@ -1024,9 +1014,9 @@
             // Track this style
             customStyleElements.push(style);
 
-            log('debug', 'Applied extreme dark mode to shadow DOM', shadowRoot);
+            Utils.log('debug', 'Applied extreme dark mode to shadow DOM', shadowRoot);
         } catch (error) {
-            log('error', `Error applying extreme dark to shadow DOM: ${error.message}`, shadowRoot);
+            Utils.log('error', `Error applying extreme dark to shadow DOM: ${error.message}`, shadowRoot);
         }
     }
 
@@ -1075,11 +1065,9 @@
      * Perform a deep scan of the document to apply extreme dark mode
      */
     function performDeepScan() {
-        if (!settings.dynamicSelectors || !settings.dynamicSelectors.deepScan || !extremeModeActive) {
-            return;
-        }
+        if (!settings.dynamicSelectors?.deepScan || !extremeModeActive) return;
 
-        log('info', 'Performing deep scan for extreme dark mode');
+        Utils.log('info', 'Performing deep scan for extreme dark mode');
 
         try {
             // Skip deep scan for low-performance devices or reduce scope
@@ -1103,14 +1091,14 @@
                         const shadowElements = root.querySelectorAll('*');
                         deepScanElements(shadowElements);
                     } catch (error) {
-                        log('debug', `Error processing shadow DOM elements: ${error.message}`, root);
+                        Utils.log('debug', `Error processing shadow DOM elements: ${error.message}`, root);
                     }
                 });
             }
 
-            log('info', `Deep scan completed, processed ${forcedElementsCount} elements`);
+            Utils.log('info', `Deep scan completed, processed ${forcedElementsCount} elements`);
         } catch (error) {
-            log('error', `Error during deep scan: ${error.message}`);
+            Utils.log('error', `Error during deep scan: ${error.message}`);
         }
     }
 
@@ -1307,11 +1295,10 @@
         let mode = deviceInfo.performance;
 
         // Check device optimization settings
-        if (settings.deviceOptimization && settings.deviceOptimization.enabled) {
+        if (settings.deviceOptimization?.enabled) {
             // If user has enabled low power mode, reduce performance
             if (settings.deviceOptimization.lowPowerMode || deviceInfo.isLowPowerMode) {
-                mode = mode === DEVICE_PERFORMANCE.HIGH ?
-                    DEVICE_PERFORMANCE.MEDIUM : DEVICE_PERFORMANCE.LOW;
+                mode = mode === DEVICE_PERFORMANCE.HIGH ? DEVICE_PERFORMANCE.MEDIUM : DEVICE_PERFORMANCE.LOW;
             }
 
             // If user prefers reduced motion, consider reducing performance
@@ -1359,72 +1346,69 @@
     }
 
     /**
-     * ------------------------
-     * STORAGE MANAGEMENT
-     * ------------------------
+     * =========================================================================
+     * SETTINGS MANAGER
+     * =========================================================================
      */
+    const SettingsManager = {
+        async load() {
+            await this.loadGlobal();
+            await this.loadPerSite();
+        },
 
-    /**
-     * Load per-site settings from storage
-     * @return {Promise<void>}
-     */
-    async function loadPerSiteSettings() {
-        const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + getCurrentSiteIdentifier();
-        try {
-            const storedSettings = await GM.getValue(siteKey, null);
-            if (storedSettings) {
-                // Store in currentSiteSettings for reference
-                currentSiteSettings = storedSettings;
-
-                // Apply per-site position settings if enabled
-                if (settings.perSiteSettings && settings.perSiteSettings.enabled &&
-                    storedSettings.position && !storedSettings.useGlobalPosition) {
-                    // Override global position settings
-                    settings.position = storedSettings.position;
-                    settings.offsetX = storedSettings.offsetX || settings.offsetX;
-                    settings.offsetY = storedSettings.offsetY || settings.offsetY;
+        async loadGlobal() {
+            try {
+                const storedSettings = await GM.getValue(STORAGE_KEYS.SETTINGS, {});
+                settings = Utils.deepMerge(DEFAULT_SETTINGS, storedSettings);
+                const storedDeviceInfo = await GM.getValue(STORAGE_KEYS.DEVICE_INFO, null);
+                if (storedDeviceInfo) {
+                    deviceInfo = { ...deviceInfo, ...storedDeviceInfo };
                 }
-
-                // Apply other per-site settings
-                settings.brightness = storedSettings.brightness || settings.brightness;
-                settings.contrast = storedSettings.contrast || settings.contrast;
-                settings.sepia = storedSettings.sepia || settings.sepia;
-
-                darkModeEnabled = typeof storedSettings.darkModeEnabled === 'boolean'
-                    ? storedSettings.darkModeEnabled
-                    : false;
-
-                // Set extreme mode if specified
-                if (typeof storedSettings.extremeModeEnabled === 'boolean' && settings.extremeMode) {
-                    settings.extremeMode.enabled = storedSettings.extremeModeEnabled;
-                }
-
-                // Load custom CSS for this site if available
-                const customCssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
-                currentSiteCustomCSS = await GM.getValue(customCssKey, '');
-
-                log('info', `Loaded per-site settings for ${getCurrentSiteIdentifier()}:`, storedSettings);
-            } else {
-                // Initialize default per-site settings
-                currentSiteSettings = {
-                    // Copy current global position
-                    position: settings.position,
-                    offsetX: settings.offsetX,
-                    offsetY: settings.offsetY,
-                    // Set to use global position initially
-                    useGlobalPosition: true,
-                    // Copy current appearance settings
-                    brightness: settings.brightness,
-                    contrast: settings.contrast,
-                    sepia: settings.sepia,
-                    darkModeEnabled: darkModeEnabled,
-                    extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
-                };
-                log('info', `No per-site settings found for ${getCurrentSiteIdentifier()}. Initialized defaults.`);
+                Utils.log('info', 'Global settings loaded');
+            } catch (error) {
+                Utils.log('error', 'Failed to load global settings', error);
+                settings = { ...DEFAULT_SETTINGS };
             }
-        } catch (error) {
-            log('error', `Failed to load per-site settings:`, error);
-            // Initialize default per-site settings on error
+        },
+
+        async loadPerSite() {
+            const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + Utils.getCurrentSiteIdentifier();
+            try {
+                const stored = await GM.getValue(siteKey, null);
+                if (stored) {
+                    currentSiteSettings = stored;
+                    this.applyPerSite();
+                    const cssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + Utils.getCurrentSiteIdentifier();
+                    currentSiteCustomCSS = await GM.getValue(cssKey, '');
+                    Utils.log('info', `Loaded per-site settings for ${Utils.getCurrentSiteIdentifier()}`);
+                } else {
+                    this.initializePerSite();
+                    Utils.log('info', `No per-site settings found for ${Utils.getCurrentSiteIdentifier()}. Initialized.`);
+                }
+            } catch (error) {
+                Utils.log('error', 'Failed to load per-site settings', error);
+                this.initializePerSite();
+            }
+        },
+
+        applyPerSite() {
+            if (!currentSiteSettings) return;
+
+            if (settings.perSiteSettings?.enabled && !currentSiteSettings.useGlobalPosition) {
+                settings.position = currentSiteSettings.position ?? settings.position;
+                settings.offsetX = currentSiteSettings.offsetX ?? settings.offsetX;
+                settings.offsetY = currentSiteSettings.offsetY ?? settings.offsetY;
+            }
+            settings.brightness = currentSiteSettings.brightness ?? settings.brightness;
+            settings.contrast = currentSiteSettings.contrast ?? settings.contrast;
+            settings.sepia = currentSiteSettings.sepia ?? settings.sepia;
+            darkModeEnabled = currentSiteSettings.darkModeEnabled ?? darkModeEnabled;
+            if (settings.extremeMode) {
+                settings.extremeMode.enabled = currentSiteSettings.extremeModeEnabled ?? settings.extremeMode.enabled;
+            }
+        },
+
+        initializePerSite() {
             currentSiteSettings = {
                 position: settings.position,
                 offsetX: settings.offsetX,
@@ -1434,538 +1418,266 @@
                 contrast: settings.contrast,
                 sepia: settings.sepia,
                 darkModeEnabled: darkModeEnabled,
-                extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
+                extremeModeEnabled: settings.extremeMode?.enabled,
             };
-        }
-    }
+        },
 
-    /**
-     * Save per-site settings to storage
-     * @return {Promise<void>}
-     */
-    async function savePerSiteSettings() {
-        if (!currentSiteSettings) {
-            currentSiteSettings = {
-                position: settings.position,
-                offsetX: settings.offsetX,
-                offsetY: settings.offsetY,
-                useGlobalPosition: settings.perSiteSettings ? !settings.perSiteSettings.enabled : true,
-                brightness: settings.brightness,
-                contrast: settings.contrast,
-                sepia: settings.sepia,
-                darkModeEnabled: darkModeEnabled,
-                extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
-            };
-        } else {
-            // Update current site settings with latest values
-            if (!currentSiteSettings.useGlobalPosition) {
-                currentSiteSettings.position = settings.position;
-                currentSiteSettings.offsetX = settings.offsetX;
-                currentSiteSettings.offsetY = settings.offsetY;
+        save: Utils.debounce(async () => {
+            try {
+                await GM.setValue(STORAGE_KEYS.SETTINGS, settings);
+                await GM.setValue(STORAGE_KEYS.DEVICE_INFO, deviceInfo);
+                await SettingsManager.savePerSite();
+                Utils.log('debug', 'All settings saved');
+
+                // Call update functions after saving
+                updateButtonPosition();
+                updateDarkReaderConfig();
+                updateExclusionListDisplay();
+                setupScheduleChecking();
+                setupDynamicScanning();
+            } catch (error) {
+                Utils.log('error', 'Failed to save settings', error);
+            }
+        }, 250),
+
+        async savePerSite() {
+            if (!currentSiteSettings) {
+                this.initializePerSite();
+            } else {
+                if (!currentSiteSettings.useGlobalPosition) {
+                    currentSiteSettings.position = settings.position;
+                    currentSiteSettings.offsetX = settings.offsetX;
+                    currentSiteSettings.offsetY = settings.offsetY;
+                }
+                currentSiteSettings.brightness = settings.brightness;
+                currentSiteSettings.contrast = settings.contrast;
+                currentSiteSettings.sepia = settings.sepia;
+                currentSiteSettings.darkModeEnabled = darkModeEnabled;
+                currentSiteSettings.extremeModeEnabled = settings.extremeMode?.enabled;
             }
 
-            currentSiteSettings.brightness = settings.brightness;
-            currentSiteSettings.contrast = settings.contrast;
-            currentSiteSettings.sepia = settings.sepia;
-            currentSiteSettings.darkModeEnabled = darkModeEnabled;
-            currentSiteSettings.extremeModeEnabled = settings.extremeMode && settings.extremeMode.enabled;
-        }
-
-        const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + getCurrentSiteIdentifier();
-
-        try {
+            const siteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + Utils.getCurrentSiteIdentifier();
             await GM.setValue(siteKey, currentSiteSettings);
 
-            // Save custom CSS for this site if it exists
             if (currentSiteCustomCSS) {
-                const customCssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
-                await GM.setValue(customCssKey, currentSiteCustomCSS);
+                const cssKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + Utils.getCurrentSiteIdentifier();
+                await GM.setValue(cssKey, currentSiteCustomCSS);
             }
+        },
 
-            log('info', `Saved per-site settings for ${getCurrentSiteIdentifier()}:`, currentSiteSettings);
-        } catch (error) {
-            log('error', `Failed to save per-site settings:`, error);
-        }
-    }
-
-    /**
-     * Load global settings from storage
-     * @return {Promise<void>}
-     */
-    async function loadSettings() {
-        try {
-            const storedSettings = await GM.getValue(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-            settings = { ...DEFAULT_SETTINGS, ...storedSettings };
-
-            // Ensure arrays and objects exist with defaults
-            if (!Array.isArray(settings.exclusionList)) {
-                settings.exclusionList = [];
-            }
-
-            if (!settings.scheduledDarkMode) {
-                settings.scheduledDarkMode = DEFAULT_SETTINGS.scheduledDarkMode;
-            }
-
-            if (!settings.keyboardShortcut) {
-                settings.keyboardShortcut = DEFAULT_SETTINGS.keyboardShortcut;
-            }
-
-            if (!settings.extremeMode) {
-                settings.extremeMode = DEFAULT_SETTINGS.extremeMode;
-            }
-
-            if (!settings.dynamicSelectors) {
-                settings.dynamicSelectors = DEFAULT_SETTINGS.dynamicSelectors;
-            }
-
-            if (!settings.diagnostics) {
-                settings.diagnostics = DEFAULT_SETTINGS.diagnostics;
-            }
-
-            // Ensure new settings exist
-            if (!settings.perSiteSettings) {
-                settings.perSiteSettings = DEFAULT_SETTINGS.perSiteSettings;
-            }
-
-            if (!settings.deviceOptimization) {
-                settings.deviceOptimization = DEFAULT_SETTINGS.deviceOptimization;
-            }
-
-            // Load device info if available
-            const storedDeviceInfo = await GM.getValue(STORAGE_KEYS.DEVICE_INFO, null);
-            if (storedDeviceInfo) {
-                deviceInfo = { ...deviceInfo, ...storedDeviceInfo };
-            }
-
-            updateButtonPosition();
-            log('info', 'Settings loaded successfully');
-        } catch (error) {
-            log('error', 'Failed to load settings:', error);
-            settings = { ...DEFAULT_SETTINGS };
-            log('warn', 'Using default settings due to load failure.');
-        }
-    }
-
-    /**
-     * Save global settings to storage (debounced for performance)
-     */
-    const saveSettingsDebounced = debounce(async () => {
-        try {
-            await GM.setValue(STORAGE_KEYS.SETTINGS, settings);
-            await GM.setValue(STORAGE_KEYS.DEVICE_INFO, deviceInfo);
-
-            updateButtonPosition();
-            updateDarkReaderConfig();
-            updateExclusionListDisplay();
-
-            // Update schedule checking if needed
-            setupScheduleChecking();
-
-            // Update dynamic selector scanning if needed
-            setupDynamicScanning();
-
-            log('debug', 'Settings saved successfully');
-        } catch (error) {
-            log('error', 'Failed to save settings:', error);
-        }
-    }, 250);
-
-    /**
-     * Save all settings including per-site settings
-     */
-    function saveSettings() {
-        saveSettingsDebounced();
-        savePerSiteSettings();
-    }
-
-    /**
-     * Reset all settings to defaults with confirmation
-     * @return {Promise<void>}
-     */
-    async function resetSettings() {
-        if (confirm('Are you sure you want to reset settings to default? This will clear ALL settings.')) {
+        async reset() {
+            if (!confirm('Are you sure you want to reset all settings?')) return;
             try {
-                const siteKeys = [];
-                const customCssKeys = [];
+                const allKeys = (await GM.listValues?.()) ?? [];
+                const keysToDelete = allKeys.filter(k =>
+                    k.startsWith(STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX) ||
+                    k.startsWith(STORAGE_KEYS.CUSTOM_CSS_PREFIX)
+                );
+                await Promise.all(keysToDelete.map(key => GM.deleteValue(key)));
 
-                // Find all per-site settings keys
-                const allKeys = await GM.listValues ? GM.listValues() : [];
-                if (Array.isArray(allKeys)) {
-                    allKeys.forEach(key => {
-                        if (key.startsWith(STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX)) {
-                            siteKeys.push(key);
-                        } else if (key.startsWith(STORAGE_KEYS.CUSTOM_CSS_PREFIX)) {
-                            customCssKeys.push(key);
-                        }
-                    });
-                }
-
-                // Delete all per-site settings
-                for (const key of siteKeys) {
-                    await GM.deleteValue(key);
-                }
-
-                // Delete all custom CSS
-                for (const key of customCssKeys) {
-                    await GM.deleteValue(key);
-                }
-
-                // Reset all global settings
                 settings = { ...DEFAULT_SETTINGS };
+                darkModeEnabled = false;
+                currentSiteCustomCSS = '';
+                this.initializePerSite();
+
                 await GM.setValue(STORAGE_KEYS.SETTINGS, settings);
                 await GM.setValue(STORAGE_KEYS.DARK_MODE, false);
 
-                darkModeEnabled = false;
-                currentSiteCustomCSS = '';
-                currentSiteSettings = null;
-
-                // Clean up any injected styles
-                customStyleElements.forEach(style => {
-                    try {
-                        style.remove();
-                    } catch (e) {
-                        // Ignore errors
-                    }
-                });
+                // Clean up UI and state
+                customStyleElements.forEach(style => style.remove());
                 customStyleElements = [];
-
-                // Reset original styles
-                for (const [element, originalStyle] of originalStyles.entries()) {
-                    try {
-                        if (originalStyle) {
-                            element.setAttribute('style', originalStyle);
-                        } else {
-                            element.removeAttribute('style');
-                        }
-                    } catch (e) {
-                        // Ignore errors for elements that might have been removed
-                    }
-                }
+                originalStyles.forEach((style, el) => el.setAttribute('style', style || ''));
                 originalStyles.clear();
                 forcedElementsCount = 0;
 
-                // Update UI to reflect changes
+                // Update UI
                 updateButtonPosition();
                 updateDarkReaderConfig();
                 updateUIValues();
                 updateButtonState();
                 updateExclusionListDisplay();
                 toggleDarkMode(false);
-
-                // Initialize a new default per-site settings object
-                currentSiteSettings = {
-                    position: settings.position,
-                    offsetX: settings.offsetX,
-                    offsetY: settings.offsetY,
-                    useGlobalPosition: true,
-                    brightness: settings.brightness,
-                    contrast: settings.contrast,
-                    sepia: settings.sepia,
-                    darkModeEnabled: darkModeEnabled,
-                    extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
-                };
-
-                await savePerSiteSettings();
-
-                // Reset intervals
                 setupScheduleChecking();
                 setupDynamicScanning();
 
-                alert('All settings have been reset to defaults.');
-
+                alert('All settings have been reset.');
             } catch (error) {
-                log('error', "Error during reset:", error);
-                alert("An error occurred during settings reset. Please check the console.");
+                Utils.log('error', 'Error during settings reset', error);
+                alert('An error occurred during reset.');
             }
-        }
-    }
+        },
 
-    /**
-     * Export settings to a JSON file
-     */
-    async function exportSettings() {
-        try {
-            // Get all per-site settings
-            const perSiteSettings = {};
-            const customCssSettings = {};
-
-            const allKeys = await GM.listValues ? GM.listValues() : [];
-
-            if (Array.isArray(allKeys)) {
-                for (const key of allKeys) {
+        async export() {
+            try {
+                const allKeys = (await GM.listValues?.()) ?? [];
+                const perSite = {};
+                const customCss = {};
+                await Promise.all(allKeys.map(async (key) => {
                     if (key.startsWith(STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX)) {
-                        const siteData = await GM.getValue(key);
-                        perSiteSettings[key] = siteData;
+                        perSite[key] = await GM.getValue(key);
                     } else if (key.startsWith(STORAGE_KEYS.CUSTOM_CSS_PREFIX)) {
-                        const cssData = await GM.getValue(key);
-                        customCssSettings[key] = cssData;
+                        customCss[key] = await GM.getValue(key);
                     }
-                }
-            }
+                }));
 
-            const exportData = {
-                global: settings,
-                perSite: perSiteSettings,
-                customCss: customCssSettings,
-                darkModeEnabled: darkModeEnabled,
-                deviceInfo: deviceInfo,
-                version: '3.1.0'
-            };
+                const exportData = {
+                    global: settings,
+                    perSite,
+                    customCss,
+                    darkModeEnabled,
+                    deviceInfo,
+                    version: '3.1.0'
+                };
 
-            const jsonString = JSON.stringify(exportData, null, 2);
-            const blob = new Blob([jsonString], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'dark-mode-toggle-settings.json';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            setTimeout(() => {
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'dark-mode-toggle-settings.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-            }, 100);
+            } catch (error) {
+                Utils.log('error', 'Failed to export settings', error);
+                alert('Failed to export settings.');
+            }
+        },
 
-        } catch (error) {
-            log('error', 'Failed to export settings:', error);
-            alert('Failed to export settings. See console for details.');
-        }
-    }
-
-    /**
-     * Import settings from a JSON file
-     * @param {File} file - The settings file to import
-     */
-    async function importSettings(file) {
-        try {
+        async import(file) {
+            if (!file) return;
             const reader = new FileReader();
-
             reader.onload = async (e) => {
                 try {
-                    const importData = JSON.parse(e.target.result);
+                    const data = JSON.parse(e.target.result);
+                    if (!data.global || !data.version) throw new Error('Invalid file');
 
-                    if (!importData.global || !importData.version) {
-                        throw new Error('Invalid settings file format');
-                    }
+                    settings = Utils.deepMerge(DEFAULT_SETTINGS, data.global);
+                    deviceInfo = { ...deviceInfo, ...(data.deviceInfo ?? {}) };
+                    darkModeEnabled = data.darkModeEnabled ?? darkModeEnabled;
 
-                    // Import global settings
-                    settings = { ...DEFAULT_SETTINGS, ...importData.global };
                     await GM.setValue(STORAGE_KEYS.SETTINGS, settings);
+                    await GM.setValue(STORAGE_KEYS.DEVICE_INFO, deviceInfo);
+                    await GM.setValue(STORAGE_KEYS.DARK_MODE, darkModeEnabled);
 
-                    // Import device info if available
-                    if (importData.deviceInfo) {
-                        deviceInfo = { ...deviceInfo, ...importData.deviceInfo };
-                        await GM.setValue(STORAGE_KEYS.DEVICE_INFO, deviceInfo);
+                    if (data.perSite) {
+                        await Promise.all(Object.entries(data.perSite).map(([k, v]) => GM.setValue(k, v)));
+                    }
+                    if (data.customCss) {
+                        await Promise.all(Object.entries(data.customCss).map(([k, v]) => GM.setValue(k, v)));
                     }
 
-                    // Import dark mode state
-                    if (typeof importData.darkModeEnabled === 'boolean') {
-                        darkModeEnabled = importData.darkModeEnabled;
-                        await GM.setValue(STORAGE_KEYS.DARK_MODE, darkModeEnabled);
-                    }
-
-                    // Import per-site settings
-                    if (importData.perSite) {
-                        for (const [key, value] of Object.entries(importData.perSite)) {
-                            await GM.setValue(key, value);
-
-                            // Update currentSiteSettings if this is for the current site
-                            const currentSiteKey = STORAGE_KEYS.PER_SITE_SETTINGS_PREFIX + getCurrentSiteIdentifier();
-                            if (key === currentSiteKey) {
-                                currentSiteSettings = value;
-
-                                // Apply per-site position if not using global position
-                                if (settings.perSiteSettings && settings.perSiteSettings.enabled &&
-                                    !currentSiteSettings.useGlobalPosition && currentSiteSettings.position) {
-                                    settings.position = currentSiteSettings.position;
-                                    settings.offsetX = currentSiteSettings.offsetX || settings.offsetX;
-                                    settings.offsetY = currentSiteSettings.offsetY || settings.offsetY;
-                                }
-                            }
-                        }
-                    }
-
-                    // Import custom CSS settings
-                    if (importData.customCss) {
-                        for (const [key, value] of Object.entries(importData.customCss)) {
-                            await GM.setValue(key, value);
-
-                            // Update current site custom CSS if relevant
-                            const currentSiteKey = STORAGE_KEYS.CUSTOM_CSS_PREFIX + getCurrentSiteIdentifier();
-                            if (key === currentSiteKey) {
-                                currentSiteCustomCSS = value;
-                            }
-                        }
-                    }
-
-                    // Update UI to reflect imported settings
-                    updateButtonPosition();
-                    updateDarkReaderConfig();
+                    await this.loadPerSite(); // Reload per-site settings for current site
                     updateUIValues();
-                    updateButtonState();
-                    updateExclusionListDisplay();
-                    setupScheduleChecking();
-                    setupDynamicScanning();
-
-                    // Re-apply dark mode if needed
-                    if (darkModeEnabled) {
-                        toggleDarkMode(true);
-                    }
-
+                    toggleDarkMode(darkModeEnabled);
                     alert('Settings imported successfully!');
-
-                } catch (parseError) {
-                    log('error', 'Failed to parse settings file:', parseError);
-                    alert('Failed to import settings: Invalid file format');
+                } catch (error) {
+                    Utils.log('error', 'Failed to import settings', error);
+                    alert('Failed to import settings: Invalid file format.');
                 }
             };
-
             reader.readAsText(file);
-
-        } catch (error) {
-            log('error', 'Failed to import settings:', error);
-            alert('Failed to import settings. See console for details.');
         }
-    }
+    };
 
     /**
-     * ------------------------
-     * DARK MODE FUNCTIONALITY
-     * ------------------------
+     * =========================================================================
+     * DARK MODE MANAGER
+     * =========================================================================
      */
+    const DarkModeManager = {
+        async toggle(force) {
+            const newState = force !== undefined ? force : !darkModeEnabled;
+            if (newState === darkModeEnabled) return;
 
-    /**
-     * Toggle dark mode state and update the UI
-     * @param {boolean} [force] - Force specific dark mode state
-     * @return {Promise<void>}
-     */
-    async function toggleDarkMode(force) {
-        darkModeEnabled = force !== undefined ? force : !darkModeEnabled;
+            darkModeEnabled = newState;
 
-        const button = document.getElementById(ELEMENT_IDS.BUTTON);
-        if (!button) return;
-
-        if (darkModeEnabled) {
-            if (!isSiteExcluded(window.location.href)) {
-                extremeModeActive = settings.extremeMode && settings.extremeMode.enabled;
-
-                // Apply regular dark mode first
-                updateDarkReaderConfig();
-
-                // Apply extreme mode if enabled
-                if (extremeModeActive) {
-                    applyExtremeMode();
-                }
-
-                // Apply site-specific fixes if needed
-                applyProblematicSiteFixes();
-
-                // Apply custom CSS if it exists
-                if (currentSiteCustomCSS && (extremeModeActive || settings.extremeMode.useCustomCSS)) {
-                    injectCustomCSS(currentSiteCustomCSS, 'custom-site-css');
-                }
-
-                await GM.setValue(STORAGE_KEYS.DARK_MODE, true);
-                log('info', 'Dark mode enabled' + (extremeModeActive ? ' with extreme mode' : ''));
-            } else {
+            if (darkModeEnabled && isSiteExcluded(window.location.href)) {
                 darkModeEnabled = false;
-                DarkReader.disable();
-                removeExtremeMode();
-                await GM.setValue(STORAGE_KEYS.DARK_MODE, false);
-                log('info', 'Site excluded. Dark mode disabled.');
+                Utils.log('info', 'Site excluded, dark mode remains disabled.');
             }
-        } else {
+
+            extremeModeActive = darkModeEnabled && settings.extremeMode?.enabled;
+
+            if (darkModeEnabled) {
+                this.enable();
+            } else {
+                this.disable();
+            }
+
+            await GM.setValue(STORAGE_KEYS.DARK_MODE, darkModeEnabled);
+            UIManager.updateButtonState();
+            await SettingsManager.savePerSite();
+        },
+
+        enable() {
+            this.updateDarkReaderConfig();
+            if (extremeModeActive) this.applyExtremeMode();
+            applyProblematicSiteFixes();
+            if (currentSiteCustomCSS && (extremeModeActive || settings.extremeMode?.useCustomCSS)) {
+                injectCustomCSS(currentSiteCustomCSS, 'custom-site-css');
+            }
+            Utils.log('info', `Dark mode enabled${extremeModeActive ? ' with extreme mode' : ''}`);
+        },
+
+        disable() {
             DarkReader.disable();
-            removeExtremeMode();
-            await GM.setValue(STORAGE_KEYS.DARK_MODE, false);
-            log('info', 'Dark mode disabled.');
-        }
+            this.removeExtremeMode();
+            Utils.log('info', 'Dark mode disabled.');
+        },
 
-        updateButtonState();
-        await savePerSiteSettings();
-    }
+        updateDarkReaderConfig() {
+            if (!darkModeEnabled || isSiteExcluded(window.location.href)) {
+                DarkReader.disable();
+                return;
+            }
 
-    /**
-     * Update Dark Reader configuration based on current settings
-     */
-    function updateDarkReaderConfig() {
-        if (darkModeEnabled && !isSiteExcluded(window.location.href)) {
             const config = {
                 brightness: settings.brightness,
                 contrast: settings.contrast,
                 sepia: settings.sepia,
-                style: {
-                    fontFamily: settings.fontFamily
-                }
+                fontFamily: settings.fontFamily,
             };
 
-            // Add extreme mode settings
-            if (settings.extremeMode && settings.extremeMode.enabled) {
+            if (settings.extremeMode?.enabled) {
                 config.ignoreImageAnalysis = settings.extremeMode.ignoreImageAnalysis;
-                // Fine-tune algorithm for better compatibility
-                config.mode = 1; // 0 = classic, 1 = dynamic
-                config.spreadExtremeMode = 50;
+                config.mode = 1; // Dynamic mode
             }
 
-            // Performance optimizations for low-end devices
             if (performanceMode === DEVICE_PERFORMANCE.LOW) {
-                // Use less resource-intensive algorithm
                 config.mode = 0; // Classic mode is faster
-                config.styleSystemControls = false; // Skip styling system controls
-                config.useFont = false; // Skip font changes
-                config.excludedImageAnalysis = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp']; // Skip all common image formats
+                config.useFont = false;
             }
 
             DarkReader.enable(config);
-        } else {
-            DarkReader.disable();
-        }
-    }
+        },
 
-    /**
-     * Apply extreme mode styles
-     */
-    function applyExtremeMode() {
-        if (!settings.extremeMode || !settings.extremeMode.enabled) {
-            return;
-        }
+        applyExtremeMode() {
+            if (!settings.extremeMode?.enabled) return;
+            extremeModeActive = true;
+            Utils.log('info', 'Applying extreme mode');
 
-        extremeModeActive = true;
-        log('info', 'Applying extreme mode');
-
-        // Inject global CSS for extreme mode
-        const extremeCss = `
+            const extremeCss = `
             html, body {
                 background-color: #121212 !important;
                 color: #ddd !important;
             }
-
-            /* Force light text for paragraphs and headings */
             p, h1, h2, h3, h4, h5, h6, span, label, li, td, th {
                 color: #ddd !important;
             }
-
-            /* Dark inputs, textareas, and selects */
             input, textarea, select {
                 background-color: #2d2d2d !important;
                 color: #ddd !important;
                 border-color: #444 !important;
             }
-
-            /* Button styling */
             button, [role="button"], .button, [type="button"], [type="submit"] {
                 background-color: #2d2d2d !important;
                 color: #ddd !important;
                 border-color: #555 !important;
             }
-
-            /* Links */
             a, a:visited {
                 color: #3a8ee6 !important;
             }
-
-            /* Force backgrounds for common UI components */
             [class*="dialog"], [class*="modal"], [class*="popup"], [class*="tooltip"],
             [class*="menu"], [class*="drawer"], [class*="sidebar"], [class*="panel"],
             [role="dialog"], [role="alert"], [role="alertdialog"], [role="menu"] {
@@ -1973,84 +1685,41 @@
                 color: #ddd !important;
                 border-color: #444 !important;
             }
-
-            /* Force fixed and sticky elements to be dark */
             [style*="position: fixed"], [style*="position:fixed"],
             [style*="position: sticky"], [style*="position:sticky"] {
                 background-color: #1a1a1a !important;
             }
         `;
+            injectCustomCSS(extremeCss, 'extreme-mode-css');
 
-        injectCustomCSS(extremeCss, 'extreme-mode-css');
-
-        // If forced elements is enabled, scan and force dark mode on elements
-        if (settings.extremeMode.forceDarkElements) {
-            // Force body and main content areas
-            forceElementStyles('body', {
-                backgroundColor: '#121212 !important',
-                color: '#ddd !important'
-            });
-
-            forceElementStyles('main, article, section, [role="main"]', {
-                backgroundColor: '#1a1a1a !important',
-                color: '#ddd !important'
-            });
-
-            // Force fixed elements that may be problematic
-            forceElementStyles('header, nav, footer, aside, [role="banner"], [role="navigation"], [role="complementary"]', {
-                backgroundColor: '#1a1a1a !important',
-                color: '#ddd !important'
-            });
-
-            // Find and apply to shadow DOMs
-            findShadowRoots();
-
-            // Perform a deep scan if enabled and performance allows
-            if (settings.dynamicSelectors && settings.dynamicSelectors.deepScan &&
-                performanceMode !== DEVICE_PERFORMANCE.LOW) {
-                performDeepScan();
-            }
-        }
-    }
-
-    /**
-     * Remove extreme mode styles
-     */
-    function removeExtremeMode() {
-        extremeModeActive = false;
-        log('info', 'Removing extreme mode');
-
-        // Remove injected style elements
-        customStyleElements.forEach(style => {
-            try {
-                style.remove();
-            } catch (e) {
-                // Ignore errors
-            }
-        });
-        customStyleElements = [];
-
-        // Restore original styles
-        for (const [element, originalStyle] of originalStyles.entries()) {
-            try {
-                if (originalStyle) {
-                    element.setAttribute('style', originalStyle);
-                } else {
-                    element.removeAttribute('style');
+            if (settings.extremeMode.forceDarkElements) {
+                forceElementStyles('body', { backgroundColor: '#121212 !important', color: '#ddd !important' });
+                forceElementStyles('main, article, section, [role="main"]', { backgroundColor: '#1a1a1a !important', color: '#ddd !important' });
+                forceElementStyles('header, nav, footer, aside', { backgroundColor: '#1a1a1a !important', color: '#ddd !important' });
+                findShadowRoots();
+                if (settings.dynamicSelectors?.deepScan && performanceMode !== DEVICE_PERFORMANCE.LOW) {
+                    performDeepScan();
                 }
-            } catch (e) {
-                // Ignore errors for elements that might have been removed
             }
+        },
+
+        removeExtremeMode() {
+            if (!extremeModeActive && customStyleElements.length === 0 && originalStyles.size === 0) return;
+            extremeModeActive = false;
+            Utils.log('info', 'Removing extreme mode');
+            customStyleElements.forEach(style => style.remove());
+            customStyleElements = [];
+            originalStyles.forEach((style, el) => el.setAttribute('style', style || ''));
+            originalStyles.clear();
+            forcedElementsCount = 0;
         }
-        originalStyles.clear();
-        forcedElementsCount = 0;
-    }
+    };
 
     /**
      * Check scheduled dark mode and apply if needed
      */
     function checkScheduledDarkMode() {
-        if (!settings.scheduledDarkMode || !settings.scheduledDarkMode.enabled) return;
+        if (!settings.scheduledDarkMode?.enabled) return;
 
         const now = new Date();
         const currentHours = now.getHours();
@@ -2077,7 +1746,7 @@
 
         // Only toggle if the current state doesn't match what it should be
         if (shouldBeDark !== darkModeEnabled) {
-            log('info', `Scheduled dark mode: Setting to ${shouldBeDark ? 'enabled' : 'disabled'}`);
+            Utils.log('info', `Scheduled dark mode: Setting to ${shouldBeDark ? 'enabled' : 'disabled'}`);
             toggleDarkMode(shouldBeDark);
         }
     }
@@ -2086,18 +1755,11 @@
      * Setup the interval for checking scheduled dark mode
      */
     function setupScheduleChecking() {
-        // Clear any existing interval
-        if (scheduleCheckInterval) {
-            clearInterval(scheduleCheckInterval);
-            scheduleCheckInterval = null;
-        }
+        clearInterval(scheduleCheckInterval);
+        scheduleCheckInterval = null;
 
-        // If scheduling is enabled, set up the interval
-        if (settings.scheduledDarkMode && settings.scheduledDarkMode.enabled) {
-            // Run immediately once
+        if (settings.scheduledDarkMode?.enabled) {
             checkScheduledDarkMode();
-
-            // Then set up the interval to check every minute
             scheduleCheckInterval = setInterval(checkScheduledDarkMode, 60000);
         }
     }
@@ -2106,34 +1768,17 @@
      * Setup dynamic scanning interval
      */
     function setupDynamicScanning() {
-        // Clear any existing interval
-        if (dynamicScanInterval) {
-            clearInterval(dynamicScanInterval);
-            dynamicScanInterval = null;
-        }
+        clearInterval(dynamicScanInterval);
+        dynamicScanInterval = null;
 
-        // If dynamic selectors are enabled, set up the scanning interval
-        if (settings.dynamicSelectors && settings.dynamicSelectors.enabled) {
-            // Set up interval based on configured scan interval and performance mode
-            let scanInterval = settings.dynamicSelectors.scanInterval || 2000;
-
-            // Adjust scan interval based on performance mode
-            if (performanceMode === DEVICE_PERFORMANCE.LOW) {
-                scanInterval = Math.max(scanInterval, 5000); // At least 5 seconds for low-performance
-            } else if (performanceMode === DEVICE_PERFORMANCE.MEDIUM) {
-                scanInterval = Math.max(scanInterval, 3000); // At least 3 seconds for medium-performance
-            }
+        if (settings.dynamicSelectors?.enabled) {
+            let scanInterval = settings.dynamicSelectors.scanInterval ?? 2000;
+            if (performanceMode === DEVICE_PERFORMANCE.LOW) scanInterval = Math.max(scanInterval, 5000);
+            else if (performanceMode === DEVICE_PERFORMANCE.MEDIUM) scanInterval = Math.max(scanInterval, 3000);
 
             dynamicScanInterval = setInterval(() => {
-                // Find shadow DOM elements
-                if (settings.dynamicSelectors.detectShadowDOM) {
-                    findShadowRoots();
-                }
-
-                // If dark mode and extreme mode are both active, perform deep scan
-                if (darkModeEnabled && extremeModeActive && settings.dynamicSelectors.deepScan &&
-                    performanceMode !== DEVICE_PERFORMANCE.LOW) {
-                    // Use throttled deep scan for performance
+                if (settings.dynamicSelectors.detectShadowDOM) findShadowRoots();
+                if (darkModeEnabled && extremeModeActive && settings.dynamicSelectors.deepScan && performanceMode !== DEVICE_PERFORMANCE.LOW) {
                     throttledDeepScan();
                 }
             }, scanInterval);
@@ -2141,7 +1786,7 @@
     }
 
     // Throttle deep scan to avoid performance issues
-    const throttledDeepScan = throttle(performDeepScan, 5000);
+    const throttledDeepScan = Utils.throttle(performDeepScan, 5000);
 
     /**
      * Apply a theme preset to the current settings
@@ -2170,8 +1815,7 @@
      * Create the dark mode toggle button
      */
     function createToggleButton() {
-        const existingButton = document.getElementById(ELEMENT_IDS.BUTTON);
-        if (existingButton) return;
+        if (document.getElementById(ELEMENT_IDS.BUTTON)) return;
 
         const button = document.createElement('button');
         button.id = ELEMENT_IDS.BUTTON;
@@ -2247,8 +1891,7 @@
      * Create the settings UI panel
      */
     function createUI() {
-        const existingUI = document.getElementById(ELEMENT_IDS.UI);
-        if (existingUI) return;
+        if (document.getElementById(ELEMENT_IDS.UI)) return;
 
         const ui = document.createElement('div');
         ui.id = ELEMENT_IDS.UI;
@@ -2261,19 +1904,12 @@
         uiElements.perSiteSettingsToggle = document.createElement('input');
         uiElements.perSiteSettingsToggle.type = 'checkbox';
         uiElements.perSiteSettingsToggle.id = ELEMENT_IDS.PER_SITE_SETTINGS_TOGGLE;
-        uiElements.perSiteSettingsToggle.checked = settings.perSiteSettings && settings.perSiteSettings.enabled;
+        uiElements.perSiteSettingsToggle.checked = settings.perSiteSettings?.enabled;
         uiElements.perSiteSettingsToggle.addEventListener('change', (e) => {
-            if (!settings.perSiteSettings) {
-                settings.perSiteSettings = { ...DEFAULT_SETTINGS.perSiteSettings };
-            }
             settings.perSiteSettings.enabled = e.target.checked;
-            saveSettings();
-
+            SettingsManager.save();
             // Update use global position toggle visibility
-            if (uiElements.useGlobalPositionToggle) {
-                uiElements.useGlobalPositionToggle.parentElement.style.display =
-                    e.target.checked ? 'block' : 'none';
-            }
+            uiElements.useGlobalPositionToggle.parentElement.style.display = e.target.checked ? 'block' : 'none';
         });
 
         perSiteSection.appendChild(createFormGroup(
@@ -2285,34 +1921,23 @@
         uiElements.useGlobalPositionToggle = document.createElement('input');
         uiElements.useGlobalPositionToggle.type = 'checkbox';
         uiElements.useGlobalPositionToggle.id = ELEMENT_IDS.USE_GLOBAL_POSITION_TOGGLE;
-        uiElements.useGlobalPositionToggle.checked = currentSiteSettings ? currentSiteSettings.useGlobalPosition : true;
+        uiElements.useGlobalPositionToggle.checked = currentSiteSettings?.useGlobalPosition ?? true;
         uiElements.useGlobalPositionToggle.addEventListener('change', (e) => {
-            if (!currentSiteSettings) {
-                currentSiteSettings = {
-                    position: settings.position,
-                    offsetX: settings.offsetX,
-                    offsetY: settings.offsetY,
-                    brightness: settings.brightness,
-                    contrast: settings.contrast,
-                    sepia: settings.sepia,
-                    darkModeEnabled: darkModeEnabled,
-                    extremeModeEnabled: settings.extremeMode && settings.extremeMode.enabled
-                };
-            }
-
-            currentSiteSettings.useGlobalPosition = e.target.checked;
-
-            if (!e.target.checked) {
-                // Using site-specific position, save current values
-                currentSiteSettings.position = settings.position;
-                currentSiteSettings.offsetX = settings.offsetX;
-                currentSiteSettings.offsetY = settings.offsetY;
+            if (!currentSiteSettings) { // Should not happen if logic is correct, but as a safeguard
+                SettingsManager.loadPerSite().then(() => {
+                    currentSiteSettings.useGlobalPosition = e.target.checked;
+                    SettingsManager.savePerSite();
+                });
             } else {
-                // Using global position, restore from global settings
-                // This is done in loadPerSiteSettings on next page load
+                currentSiteSettings.useGlobalPosition = e.target.checked;
+                if (!e.target.checked) {
+                    // Using site-specific position, save current global values as site-specific
+                    currentSiteSettings.position = settings.position;
+                    currentSiteSettings.offsetX = settings.offsetX;
+                    currentSiteSettings.offsetY = settings.offsetY;
+                }
+                SettingsManager.savePerSite();
             }
-
-            savePerSiteSettings();
         });
 
         const useGlobalPositionGroup = createFormGroup(
@@ -2321,15 +1946,14 @@
         );
 
         // Only show global position toggle if per-site settings are enabled
-        useGlobalPositionGroup.style.display = settings.perSiteSettings &&
-            settings.perSiteSettings.enabled ? 'block' : 'none';
+        useGlobalPositionGroup.style.display = settings.perSiteSettings?.enabled ? 'block' : 'none';
 
         perSiteSection.appendChild(useGlobalPositionGroup);
 
         // Current site info
         const currentSiteInfo = document.createElement('div');
         currentSiteInfo.className = 'site-info';
-        currentSiteInfo.textContent = `Current site: ${getCurrentSiteIdentifier()}`;
+        currentSiteInfo.textContent = `Current site: ${Utils.getCurrentSiteIdentifier()}`;
         perSiteSection.appendChild(currentSiteInfo);
 
         ui.appendChild(perSiteSection);
@@ -2354,7 +1978,7 @@
 
         uiElements.positionSelect.addEventListener('change', (e) => {
             settings.position = e.target.value;
-            saveSettings();
+            SettingsManager.save();
         });
 
         positionSection.appendChild(createFormGroup(positionLabel, uiElements.positionSelect));
@@ -2362,12 +1986,12 @@
         // X and Y offset inputs
         uiElements.offsetXInput = createNumberInput('offsetXInput', 'Horizontal Offset', settings.offsetX, (e) => {
             settings.offsetX = parseInt(e.target.value);
-            saveSettings();
+            SettingsManager.save();
         });
 
         uiElements.offsetYInput = createNumberInput('offsetYInput', 'Vertical Offset', settings.offsetY, (e) => {
             settings.offsetY = parseInt(e.target.value);
-            saveSettings();
+            SettingsManager.save();
         });
 
         positionSection.appendChild(createFormGroup(createLabel('Offset X:'), uiElements.offsetXInput));
@@ -2375,9 +1999,9 @@
 
         // Settings button offset input
         uiElements.settingsButtonOffsetInput = createNumberInput('settingsButtonOffsetInput', 'Settings Button Offset',
-            settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset, (e) => {
+            settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset, (e) => {
             settings.settingsButtonOffset = parseInt(e.target.value);
-            saveSettings();
+            SettingsManager.save();
             updateSettingsButtonPosition();
         });
 
@@ -2401,13 +2025,10 @@
         uiElements.deviceOptimizationToggle = document.createElement('input');
         uiElements.deviceOptimizationToggle.type = 'checkbox';
         uiElements.deviceOptimizationToggle.id = 'deviceOptimizationToggle';
-        uiElements.deviceOptimizationToggle.checked = settings.deviceOptimization && settings.deviceOptimization.enabled;
+        uiElements.deviceOptimizationToggle.checked = settings.deviceOptimization?.enabled;
         uiElements.deviceOptimizationToggle.addEventListener('change', (e) => {
-            if (!settings.deviceOptimization) {
-                settings.deviceOptimization = { ...DEFAULT_SETTINGS.deviceOptimization };
-            }
             settings.deviceOptimization.enabled = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
             updatePerformanceMode();
         });
 
@@ -2420,13 +2041,10 @@
         uiElements.reducedMotionToggle = document.createElement('input');
         uiElements.reducedMotionToggle.type = 'checkbox';
         uiElements.reducedMotionToggle.id = 'reducedMotionToggle';
-        uiElements.reducedMotionToggle.checked = settings.deviceOptimization && settings.deviceOptimization.reducedMotion;
+        uiElements.reducedMotionToggle.checked = settings.deviceOptimization?.reducedMotion;
         uiElements.reducedMotionToggle.addEventListener('change', (e) => {
-            if (!settings.deviceOptimization) {
-                settings.deviceOptimization = { ...DEFAULT_SETTINGS.deviceOptimization };
-            }
             settings.deviceOptimization.reducedMotion = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
             updatePerformanceMode();
         });
 
@@ -2439,13 +2057,10 @@
         uiElements.lowPowerModeToggle = document.createElement('input');
         uiElements.lowPowerModeToggle.type = 'checkbox';
         uiElements.lowPowerModeToggle.id = 'lowPowerModeToggle';
-        uiElements.lowPowerModeToggle.checked = settings.deviceOptimization && settings.deviceOptimization.lowPowerMode;
+        uiElements.lowPowerModeToggle.checked = settings.deviceOptimization?.lowPowerMode;
         uiElements.lowPowerModeToggle.addEventListener('change', (e) => {
-            if (!settings.deviceOptimization) {
-                settings.deviceOptimization = { ...DEFAULT_SETTINGS.deviceOptimization };
-            }
             settings.deviceOptimization.lowPowerMode = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
             updatePerformanceMode();
         });
 
@@ -2505,19 +2120,19 @@
         uiElements.brightnessInput = createRangeInput('brightnessInput', 'Brightness', settings.brightness, 0, 150, (e) => {
             settings.brightness = parseInt(e.target.value);
             updateValueDisplay('brightnessValue', settings.brightness);
-            saveSettings();
+            SettingsManager.save();
         });
 
         uiElements.contrastInput = createRangeInput('contrastInput', 'Contrast', settings.contrast, 50, 150, (e) => {
             settings.contrast = parseInt(e.target.value);
             updateValueDisplay('contrastValue', settings.contrast);
-            saveSettings();
+            SettingsManager.save();
         });
 
         uiElements.sepiaInput = createRangeInput('sepiaInput', 'Sepia', settings.sepia, 0, 100, (e) => {
             settings.sepia = parseInt(e.target.value);
             updateValueDisplay('sepiaValue', settings.sepia);
-            saveSettings();
+            SettingsManager.save();
         });
 
         darkModeSection.appendChild(createFormGroup(
@@ -2547,18 +2162,12 @@
         uiElements.extremeModeToggle = document.createElement('input');
         uiElements.extremeModeToggle.type = 'checkbox';
         uiElements.extremeModeToggle.id = ELEMENT_IDS.EXTREME_MODE_TOGGLE;
-        uiElements.extremeModeToggle.checked = settings.extremeMode && settings.extremeMode.enabled;
+        uiElements.extremeModeToggle.checked = settings.extremeMode?.enabled;
         uiElements.extremeModeToggle.addEventListener('change', (e) => {
-            if (!settings.extremeMode) {
-                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
-            }
             settings.extremeMode.enabled = e.target.checked;
-            saveSettings();
-
+            SettingsManager.save();
             // Update dark mode immediately if it's enabled
-            if (darkModeEnabled) {
-                toggleDarkMode(true);
-            }
+            if (darkModeEnabled) toggleDarkMode(true);
         });
 
         extremeModeSection.appendChild(createFormGroup(
@@ -2570,13 +2179,10 @@
         uiElements.forceDarkToggle = document.createElement('input');
         uiElements.forceDarkToggle.type = 'checkbox';
         uiElements.forceDarkToggle.id = ELEMENT_IDS.FORCE_DARK_TOGGLE;
-        uiElements.forceDarkToggle.checked = settings.extremeMode && settings.extremeMode.forceDarkElements;
+        uiElements.forceDarkToggle.checked = settings.extremeMode?.forceDarkElements;
         uiElements.forceDarkToggle.addEventListener('change', (e) => {
-            if (!settings.extremeMode) {
-                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
-            }
             settings.extremeMode.forceDarkElements = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
         });
 
         extremeModeSection.appendChild(createFormGroup(
@@ -2588,13 +2194,10 @@
         uiElements.customCssToggle = document.createElement('input');
         uiElements.customCssToggle.type = 'checkbox';
         uiElements.customCssToggle.id = 'customCssToggle';
-        uiElements.customCssToggle.checked = settings.extremeMode && settings.extremeMode.useCustomCSS;
+        uiElements.customCssToggle.checked = settings.extremeMode?.useCustomCSS;
         uiElements.customCssToggle.addEventListener('change', (e) => {
-            if (!settings.extremeMode) {
-                settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
-            }
             settings.extremeMode.useCustomCSS = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
         });
 
         extremeModeSection.appendChild(createFormGroup(
@@ -2607,14 +2210,14 @@
         uiElements.customCssTextarea.id = ELEMENT_IDS.CUSTOM_CSS_TEXTAREA;
         uiElements.customCssTextarea.setAttribute('aria-label', 'Custom CSS');
         uiElements.customCssTextarea.setAttribute('placeholder', 'Enter custom CSS for this site...');
-        uiElements.customCssTextarea.value = currentSiteCustomCSS || '';
+        uiElements.customCssTextarea.value = currentSiteCustomCSS ?? '';
         uiElements.customCssTextarea.rows = 6;
         uiElements.customCssTextarea.addEventListener('change', (e) => {
             currentSiteCustomCSS = e.target.value;
-            savePerSiteSettings();
+            SettingsManager.savePerSite();
 
             // Apply custom CSS if dark mode is enabled
-            if (darkModeEnabled && (extremeModeActive || settings.extremeMode.useCustomCSS)) {
+            if (darkModeEnabled && (extremeModeActive || settings.extremeMode?.useCustomCSS)) {
                 injectCustomCSS(currentSiteCustomCSS, 'custom-site-css');
             }
         });
@@ -2639,13 +2242,10 @@
         uiElements.dynamicSelectorsToggle = document.createElement('input');
         uiElements.dynamicSelectorsToggle.type = 'checkbox';
         uiElements.dynamicSelectorsToggle.id = ELEMENT_IDS.DYNAMIC_SELECTORS_TOGGLE;
-        uiElements.dynamicSelectorsToggle.checked = settings.dynamicSelectors && settings.dynamicSelectors.enabled;
+        uiElements.dynamicSelectorsToggle.checked = settings.dynamicSelectors?.enabled;
         uiElements.dynamicSelectorsToggle.addEventListener('change', (e) => {
-            if (!settings.dynamicSelectors) {
-                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
-            }
             settings.dynamicSelectors.enabled = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
             setupDynamicScanning();
         });
 
@@ -2658,14 +2258,10 @@
         uiElements.shadowDomToggle = document.createElement('input');
         uiElements.shadowDomToggle.type = 'checkbox';
         uiElements.shadowDomToggle.id = 'shadowDomToggle';
-        uiElements.shadowDomToggle.checked = settings.dynamicSelectors && settings.dynamicSelectors.detectShadowDOM;
+        uiElements.shadowDomToggle.checked = settings.dynamicSelectors?.detectShadowDOM;
         uiElements.shadowDomToggle.addEventListener('change', (e) => {
-            if (!settings.dynamicSelectors) {
-                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
-            }
             settings.dynamicSelectors.detectShadowDOM = e.target.checked;
-            saveSettings();
-
+            SettingsManager.save();
             // Clear and rebuild shadow root set if needed
             if (e.target.checked) {
                 shadowRoots.clear();
@@ -2682,13 +2278,10 @@
         uiElements.deepScanToggle = document.createElement('input');
         uiElements.deepScanToggle.type = 'checkbox';
         uiElements.deepScanToggle.id = 'deepScanToggle';
-        uiElements.deepScanToggle.checked = settings.dynamicSelectors && settings.dynamicSelectors.deepScan;
+        uiElements.deepScanToggle.checked = settings.dynamicSelectors?.deepScan;
         uiElements.deepScanToggle.addEventListener('change', (e) => {
-            if (!settings.dynamicSelectors) {
-                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
-            }
             settings.dynamicSelectors.deepScan = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
         });
 
         dynamicSelectorsSection.appendChild(createFormGroup(
@@ -2698,12 +2291,9 @@
 
         // Scan interval input
         uiElements.scanIntervalInput = createNumberInput('scanIntervalInput', 'Scan Interval (ms)',
-            settings.dynamicSelectors ? settings.dynamicSelectors.scanInterval : DEFAULT_SETTINGS.dynamicSelectors.scanInterval, (e) => {
-            if (!settings.dynamicSelectors) {
-                settings.dynamicSelectors = { ...DEFAULT_SETTINGS.dynamicSelectors };
-            }
+            settings.dynamicSelectors?.scanInterval ?? DEFAULT_SETTINGS.dynamicSelectors.scanInterval, (e) => {
             settings.dynamicSelectors.scanInterval = Math.max(1000, parseInt(e.target.value));
-            saveSettings();
+            SettingsManager.save();
             setupDynamicScanning();
         });
 
@@ -2727,13 +2317,10 @@
         uiElements.scheduleEnabledToggle = document.createElement('input');
         uiElements.scheduleEnabledToggle.type = 'checkbox';
         uiElements.scheduleEnabledToggle.id = ELEMENT_IDS.SCHEDULE_ENABLED_TOGGLE;
-        uiElements.scheduleEnabledToggle.checked = settings.scheduledDarkMode && settings.scheduledDarkMode.enabled;
+        uiElements.scheduleEnabledToggle.checked = settings.scheduledDarkMode?.enabled;
         uiElements.scheduleEnabledToggle.addEventListener('change', (e) => {
-            if (!settings.scheduledDarkMode) {
-                settings.scheduledDarkMode = { ...DEFAULT_SETTINGS.scheduledDarkMode };
-            }
             settings.scheduledDarkMode.enabled = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
             setupScheduleChecking();
         });
 
@@ -2741,25 +2328,19 @@
         uiElements.scheduleStartTime = document.createElement('input');
         uiElements.scheduleStartTime.type = 'time';
         uiElements.scheduleStartTime.id = ELEMENT_IDS.SCHEDULE_START_TIME;
-        uiElements.scheduleStartTime.value = settings.scheduledDarkMode ? settings.scheduledDarkMode.startTime : DEFAULT_SETTINGS.scheduledDarkMode.startTime;
+        uiElements.scheduleStartTime.value = settings.scheduledDarkMode?.startTime ?? DEFAULT_SETTINGS.scheduledDarkMode.startTime;
         uiElements.scheduleStartTime.addEventListener('change', (e) => {
-            if (!settings.scheduledDarkMode) {
-                settings.scheduledDarkMode = { ...DEFAULT_SETTINGS.scheduledDarkMode };
-            }
             settings.scheduledDarkMode.startTime = e.target.value;
-            saveSettings();
+            SettingsManager.save();
         });
 
         uiElements.scheduleEndTime = document.createElement('input');
         uiElements.scheduleEndTime.type = 'time';
         uiElements.scheduleEndTime.id = ELEMENT_IDS.SCHEDULE_END_TIME;
-        uiElements.scheduleEndTime.value = settings.scheduledDarkMode ? settings.scheduledDarkMode.endTime : DEFAULT_SETTINGS.scheduledDarkMode.endTime;
+        uiElements.scheduleEndTime.value = settings.scheduledDarkMode?.endTime ?? DEFAULT_SETTINGS.scheduledDarkMode.endTime;
         uiElements.scheduleEndTime.addEventListener('change', (e) => {
-            if (!settings.scheduledDarkMode) {
-                settings.scheduledDarkMode = { ...DEFAULT_SETTINGS.scheduledDarkMode };
-            }
             settings.scheduledDarkMode.endTime = e.target.value;
-            saveSettings();
+            SettingsManager.save();
         });
 
         scheduleSection.appendChild(createFormGroup(
@@ -2795,7 +2376,7 @@
         uiElements.fontFamilyInput.value = settings.fontFamily;
         uiElements.fontFamilyInput.addEventListener('change', (e) => {
             settings.fontFamily = e.target.value;
-            saveSettings();
+            SettingsManager.save();
         });
 
         appearanceSection.appendChild(createFormGroup(createLabel('Font Family:'), uiElements.fontFamilyInput));
@@ -2809,7 +2390,7 @@
         uiElements.themeColorInput.addEventListener('change', (e) => {
             settings.themeColor = e.target.value;
             applyUIStyles();
-            saveSettings();
+            SettingsManager.save();
         });
 
         uiElements.textColorInput = document.createElement('input');
@@ -2820,7 +2401,7 @@
         uiElements.textColorInput.addEventListener('change', (e) => {
             settings.textColor = e.target.value;
             applyUIStyles();
-            saveSettings();
+            SettingsManager.save();
         });
 
         appearanceSection.appendChild(createFormGroup(createLabel('UI Theme Color:'), uiElements.themeColorInput));
@@ -2841,20 +2422,20 @@
         exclusionInputGroup.className = 'input-group';
         exclusionInputGroup.appendChild(uiElements.siteExclusionInput);
 
-        const addCurrentSiteButton = createButton('addCurrentSiteButton', '+ Current Site', () => {
-            const currentSite = window.location.hostname;
-            if (!settings.exclusionList.includes(currentSite)) {
+        const addCurrentSiteButton = Utils.createButton('addCurrentSiteButton', '+ Current Site', () => {
+            const currentSite = Utils.getCurrentSiteIdentifier();
+            if (currentSite && !settings.exclusionList.includes(currentSite)) {
                 settings.exclusionList.push(currentSite);
-                saveSettings();
+                SettingsManager.save();
                 updateExclusionListDisplay();
             }
         });
 
-        const addButton = createButton('addExclusionButton', '+ Add', () => {
+        const addButton = Utils.createButton('addExclusionButton', '+ Add', () => {
             const url = uiElements.siteExclusionInput.value.trim();
             if (url && !settings.exclusionList.includes(url)) {
                 settings.exclusionList.push(url);
-                saveSettings();
+                SettingsManager.save();
                 updateExclusionListDisplay();
                 uiElements.siteExclusionInput.value = '';
             }
@@ -2878,13 +2459,10 @@
         uiElements.diagnosticsToggle = document.createElement('input');
         uiElements.diagnosticsToggle.type = 'checkbox';
         uiElements.diagnosticsToggle.id = 'diagnosticsToggle';
-        uiElements.diagnosticsToggle.checked = settings.diagnostics && settings.diagnostics.enabled;
+        uiElements.diagnosticsToggle.checked = settings.diagnostics?.enabled;
         uiElements.diagnosticsToggle.addEventListener('change', (e) => {
-            if (!settings.diagnostics) {
-                settings.diagnostics = { ...DEFAULT_SETTINGS.diagnostics };
-            }
             settings.diagnostics.enabled = e.target.checked;
-            saveSettings();
+            SettingsManager.save();
         });
 
         diagnosticsSection.appendChild(createFormGroup(
@@ -2902,16 +2480,13 @@
             const option = document.createElement('option');
             option.value = level;
             option.textContent = level.charAt(0).toUpperCase() + level.slice(1);
-            option.selected = settings.diagnostics && settings.diagnostics.logLevel === level;
+            option.selected = settings.diagnostics?.logLevel === level;
             uiElements.logLevelSelect.appendChild(option);
         });
 
         uiElements.logLevelSelect.addEventListener('change', (e) => {
-            if (!settings.diagnostics) {
-                settings.diagnostics = { ...DEFAULT_SETTINGS.diagnostics };
-            }
             settings.diagnostics.logLevel = e.target.value;
-            saveSettings();
+            SettingsManager.save();
         });
 
         diagnosticsSection.appendChild(createFormGroup(
@@ -2920,7 +2495,7 @@
         ));
 
         // Show diagnostics button
-        const showDiagnosticsButton = createButton(ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON, 'Show Diagnostic Report', showDiagnosticReport);
+        const showDiagnosticsButton = Utils.createButton(ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON, 'Show Diagnostic Report', showDiagnosticReport);
         diagnosticsSection.appendChild(showDiagnosticsButton);
 
         // Add explanation
@@ -2935,7 +2510,7 @@
         const importExportSection = createSettingSection('Import/Export');
 
         // Export button
-        const exportButton = createButton(ELEMENT_IDS.EXPORT_SETTINGS_BUTTON, 'Export Settings', exportSettings);
+        const exportButton = Utils.createButton(ELEMENT_IDS.EXPORT_SETTINGS_BUTTON, 'Export Settings', SettingsManager.export);
 
         // Import button and file input
         uiElements.importSettingsInput = document.createElement('input');
@@ -2944,13 +2519,9 @@
         uiElements.importSettingsInput.accept = '.json';
         uiElements.importSettingsInput.style.display = 'none';
 
-        uiElements.importSettingsInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                importSettings(e.target.files[0]);
-            }
-        });
+        uiElements.importSettingsInput.addEventListener('change', (e) => SettingsManager.import(e.target.files[0]));
 
-        const importButton = createButton(ELEMENT_IDS.IMPORT_SETTINGS_BUTTON, 'Import Settings', () => {
+        const importButton = Utils.createButton(ELEMENT_IDS.IMPORT_SETTINGS_BUTTON, 'Import Settings', () => {
             uiElements.importSettingsInput.click();
         });
 
@@ -2964,7 +2535,7 @@
         const actionsSection = createSettingSection('Actions');
 
         // Reset settings button
-        const resetSettingsButton = createButton(ELEMENT_IDS.RESET_SETTINGS_BUTTON, 'Reset All Settings', resetSettings);
+        const resetSettingsButton = Utils.createButton(ELEMENT_IDS.RESET_SETTINGS_BUTTON, 'Reset All Settings', SettingsManager.reset);
         actionsSection.appendChild(resetSettingsButton);
 
         ui.appendChild(actionsSection);
@@ -3104,20 +2675,19 @@
 
         settings.exclusionList.forEach(excludedSite => {
             const listItem = document.createElement('li');
-
             const siteText = document.createElement('span');
             siteText.textContent = excludedSite;
             siteText.className = 'site-url';
             listItem.appendChild(siteText);
 
-            const removeButton = createButton('removeButton-' + excludedSite.replace(/[^a-zA-Z0-9]/g, '-'), '✕', () => {
+            const removeButton = Utils.createButton(`remove-${excludedSite}`, '✕', () => {
                 settings.exclusionList = settings.exclusionList.filter(site => site !== excludedSite);
-                saveSettings();
+                SettingsManager.save();
                 updateExclusionListDisplay();
             });
-
             removeButton.className = 'remove-button';
             listItem.appendChild(removeButton);
+
             uiElements.siteExclusionList.appendChild(listItem);
         });
     }
@@ -3126,10 +2696,9 @@
      * Create a button to toggle the settings UI
      */
     function createToggleUIButton() {
-        const existingButton = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
-        if (existingButton) return;
+        if (document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON)) return;
 
-        const toggleUIButton = createButton(ELEMENT_IDS.TOGGLE_UI_BUTTON, 'Settings', toggleUI);
+        const toggleUIButton = Utils.createButton(ELEMENT_IDS.TOGGLE_UI_BUTTON, '', toggleUI);
         toggleUIButton.innerHTML = SVG_ICONS.GEAR;
         toggleUIButton.setAttribute('aria-label', 'Dark Mode Settings');
         toggleUIButton.setAttribute('title', 'Dark Mode Settings');
@@ -3144,7 +2713,7 @@
     function updateSettingsButtonPosition() {
         const button = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
         if (button) {
-            button.style.right = `${settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset}px`;
+            button.style.right = `${settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset}px`;
         }
     }
 
@@ -3187,7 +2756,7 @@
 
         // Update settings button offset value if it exists
         if (uiElements.settingsButtonOffsetInput) {
-            uiElements.settingsButtonOffsetInput.value = settings.settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset;
+            uiElements.settingsButtonOffsetInput.value = settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset;
         }
 
         // Update extreme mode values
@@ -3195,7 +2764,7 @@
             uiElements.extremeModeToggle.checked = settings.extremeMode.enabled;
             uiElements.forceDarkToggle.checked = settings.extremeMode.forceDarkElements;
             uiElements.customCssToggle.checked = settings.extremeMode.useCustomCSS;
-            uiElements.customCssTextarea.value = currentSiteCustomCSS || '';
+            uiElements.customCssTextarea.value = currentSiteCustomCSS ?? '';
         }
 
         // Update dynamic selectors values
@@ -3234,8 +2803,7 @@
         }
 
         // If previous styles exist, remove them
-        const existingStyle = document.getElementById('darkModeToggleStyle');
-        if (existingStyle) existingStyle.remove();
+        document.getElementById('darkModeToggleStyle')?.remove();
 
         // Add updated styles
         GM.addStyle(generateStyles());
@@ -3597,7 +3165,7 @@
      * Setup keyboard shortcuts for toggling dark mode
      */
     function setupKeyboardShortcuts() {
-        if (!settings.keyboardShortcut || !settings.keyboardShortcut.enabled) return;
+        if (!settings.keyboardShortcut?.enabled) return;
 
         document.addEventListener('keydown', (e) => {
             const shortcut = settings.keyboardShortcut;
@@ -3620,30 +3188,22 @@
      * Register menu commands for easier access
      */
     function registerMenuCommands() {
+        if (typeof GM.registerMenuCommand !== 'function') {
+            Utils.log('debug', 'Menu commands not supported by userscript manager');
+            return;
+        }
         try {
-            if (typeof GM.registerMenuCommand !== 'undefined') {
-                GM.registerMenuCommand('Toggle Dark Mode', () => toggleDarkMode());
-                GM.registerMenuCommand('Open Settings', () => {
-                    const ui = document.getElementById(ELEMENT_IDS.UI);
-                    if (ui && !uiVisible) {
-                        toggleUI();
-                    }
-                });
-                GM.registerMenuCommand('Toggle Extreme Mode', () => {
-                    if (!settings.extremeMode) {
-                        settings.extremeMode = { ...DEFAULT_SETTINGS.extremeMode };
-                    }
-                    settings.extremeMode.enabled = !settings.extremeMode.enabled;
-                    saveSettings();
-
-                    // Update dark mode immediately if it's enabled
-                    if (darkModeEnabled) {
-                        toggleDarkMode(true);
-                    }
-                });
-            }
+            GM.registerMenuCommand('Toggle Dark Mode', () => toggleDarkMode());
+            GM.registerMenuCommand('Open Settings', () => {
+                if (!uiVisible) toggleUI();
+            });
+            GM.registerMenuCommand('Toggle Extreme Mode', () => {
+                settings.extremeMode.enabled = !settings.extremeMode.enabled;
+                SettingsManager.save();
+                if (darkModeEnabled) toggleDarkMode(true);
+            });
         } catch (error) {
-            log('debug', 'Menu commands not supported by userscript manager');
+            Utils.log('error', 'Failed to register menu commands', error);
         }
     }
 
@@ -3661,10 +3221,9 @@
         if (isInitialized) return;
         isInitialized = true;
 
-        log('info', 'Enhanced Dark Mode Toggle: Initializing...');
+        Utils.log('info', 'Enhanced Dark Mode Toggle: Initializing...');
 
-        await loadSettings();
-        await loadPerSiteSettings();
+        await SettingsManager.load();
 
         // Register menu commands
         registerMenuCommands();
@@ -3679,12 +3238,7 @@
         applyUIStyles();
 
         // Initialize dark mode state
-        darkModeEnabled = await GM.getValue(STORAGE_KEYS.DARK_MODE, false);
-        if (darkModeEnabled) {
-            toggleDarkMode(true);
-        } else {
-            toggleDarkMode(false);
-        }
+        toggleDarkMode(await GM.getValue(STORAGE_KEYS.DARK_MODE, false));
 
         // Set up keyboard shortcuts
         setupKeyboardShortcuts();
@@ -3696,81 +3250,46 @@
         setupDynamicScanning();
 
         // Track problematic sites for diagnostics
-        if (settings.diagnostics && settings.diagnostics.enabled) {
+        if (settings.diagnostics?.enabled) {
             collectSiteInfo();
         }
 
-        log('info', 'Enhanced Dark Mode Toggle: Initialization complete');
+        Utils.log('info', 'Enhanced Dark Mode Toggle: Initialization complete');
     }
 
     /**
      * Setup DOM mutation observer to ensure UI elements persist
      */
     function setupMutationObserver() {
-        // More targeted mutation observer approach
-        const observer = new MutationObserver(debounce(() => {
-            // Only check for critical UI elements and recreate if missing
-            const buttonExists = document.getElementById(ELEMENT_IDS.BUTTON);
-            if (!buttonExists) {
-                log('info', 'Dark Mode Toggle: Button missing, recreating...');
+        const observerCallback = Utils.debounce(() => {
+            if (!document.getElementById(ELEMENT_IDS.BUTTON)) {
+                Utils.log('info', 'Main toggle button missing, recreating...');
                 createToggleButton();
                 updateButtonPosition();
                 updateButtonState();
             }
-
-            const toggleUIButtonExists = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
-            if (!toggleUIButtonExists) {
-                log('info', 'Dark Mode Toggle: Settings button missing, recreating...');
+            if (!document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON)) {
+                Utils.log('info', 'Settings UI toggle button missing, recreating...');
                 createToggleUIButton();
             }
-
-            // Only recreate UI when it's supposed to be visible but is missing
-            if (uiVisible) {
-                const uiExists = document.getElementById(ELEMENT_IDS.UI);
-                if (!uiExists) {
-                    log('info', 'Dark Mode Toggle: UI missing, recreating...');
-                    createUI();
-                    updateUIValues();
-                    applyUIStyles();
-                    // Make it visible again since creating it doesn't automatically show it
-                    const newUI = document.getElementById(ELEMENT_IDS.UI);
-                    if (newUI) {
-                        newUI.classList.add('visible');
-                        newUI.setAttribute('aria-hidden', 'false');
-                    }
-                }
+            if (uiVisible && !document.getElementById(ELEMENT_IDS.UI)) {
+                Utils.log('info', 'Settings UI panel missing while visible, recreating...');
+                createUI();
+                updateUIValues();
+                applyUIStyles();
+                toggleUI(); // This will set it to visible
             }
-
-            // Extend this to react to theme changes in the website itself
             if (darkModeEnabled && extremeModeActive) {
-                // Check for new shadow roots
                 findShadowRoots();
-
-                // Re-apply extreme mode overrides on critical elements
-                forceElementStyles('body', {
-                    backgroundColor: '#121212 !important',
-                    color: '#ddd !important'
-                });
-
-                forceElementStyles('main, article, section, [role="main"]', {
-                    backgroundColor: '#1a1a1a !important',
-                    color: '#ddd !important'
-                });
             }
-        }, 300));
+        }, 500, true); // Use immediate debounce for responsiveness
 
-        // Observe the body and head for changes
-        observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true,
-            attributes: false,
-            characterData: false
-        });
+        const observer = new MutationObserver(observerCallback);
 
-        // Also observe document for more complete coverage
-        observer.observe(document, {
+        // Observe the body for child additions/removals. More performant than observing the whole documentElement subtree.
+        observer.observe(document.body, {
             childList: true,
-            attributes: false
+            subtree: true, // Still needed for elements being removed from deep within the body
         });
     }
 
