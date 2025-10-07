@@ -3,7 +3,7 @@
 // @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Ultra enhanced dark mode toggle with per-site settings, performance optimization, and device adaptation
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      3.1.0
+// @version      3.2.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
@@ -381,6 +381,9 @@
         },
         transitionSpeed: 0.3,
         settingsButtonOffset: 20,
+        settingsButtonVisible: true,
+        settingsButtonVerticalPosition: 'center',
+        settingsButtonVerticalOffset: 40,
         scheduledDarkMode: {
             enabled: false,
             startTime: '20:00',
@@ -512,9 +515,9 @@
      */
     function getProblematicSiteInfo() {
         const hostname = Utils.getCurrentSiteIdentifier();
-        return Object.entries(PROBLEMATIC_SITES)
-            .find(([site]) => hostname.includes(site))
-            ?.map(([key, value]) => ({ ...value, key }))[0] ?? null;
+        const entry = Object.entries(PROBLEMATIC_SITES)
+            .find(([site]) => hostname.includes(site));
+        return entry ? { ...entry[1], key: entry[0] } : null;
     }
 
     /**
@@ -544,7 +547,7 @@
         // Apply default button position for problematic site if available
         if (siteInfo.defaultButtonPosition && currentSiteSettings?.useGlobalPosition === false) {
             currentSiteSettings.position = siteInfo.defaultButtonPosition;
-            savePerSiteSettings();
+            SettingsManager.savePerSite();
             updateButtonPosition();
         }
     }
@@ -1431,7 +1434,7 @@
 
                 // Call update functions after saving
                 updateButtonPosition();
-                updateDarkReaderConfig();
+                DarkModeManager.updateDarkReaderConfig();
                 updateExclusionListDisplay();
                 setupScheduleChecking();
                 setupDynamicScanning();
@@ -1492,7 +1495,7 @@
 
                 // Update UI
                 updateButtonPosition();
-                updateDarkReaderConfig();
+                DarkModeManager.updateDarkReaderConfig();
                 updateUIValues();
                 updateButtonState();
                 updateExclusionListDisplay();
@@ -1606,7 +1609,7 @@
             }
 
             await GM.setValue(STORAGE_KEYS.DARK_MODE, darkModeEnabled);
-            UIManager.updateButtonState();
+            updateButtonState();
             await SettingsManager.savePerSite();
         },
 
@@ -1715,6 +1718,8 @@
         }
     };
 
+    const toggleDarkMode = (...args) => DarkModeManager.toggle(...args);
+
     /**
      * Check scheduled dark mode and apply if needed
      */
@@ -1801,8 +1806,8 @@
         settings.sepia = preset.sepia;
 
         updateUIValues();
-        saveSettings();
-        updateDarkReaderConfig();
+        SettingsManager.save();
+        DarkModeManager.updateDarkReaderConfig();
     }
 
     /**
@@ -1997,15 +2002,83 @@
         positionSection.appendChild(createFormGroup(createLabel('Offset X:'), uiElements.offsetXInput));
         positionSection.appendChild(createFormGroup(createLabel('Offset Y:'), uiElements.offsetYInput));
 
-        // Settings button offset input
-        uiElements.settingsButtonOffsetInput = createNumberInput('settingsButtonOffsetInput', 'Settings Button Offset',
+        // Settings button visibility toggle
+        uiElements.settingsButtonVisibilityToggle = document.createElement('input');
+        uiElements.settingsButtonVisibilityToggle.type = 'checkbox';
+        uiElements.settingsButtonVisibilityToggle.id = 'settingsButtonVisibilityToggle';
+        uiElements.settingsButtonVisibilityToggle.checked = settings.settingsButtonVisible ?? DEFAULT_SETTINGS.settingsButtonVisible;
+        uiElements.settingsButtonVisibilityToggle.addEventListener('change', (e) => {
+            settings.settingsButtonVisible = e.target.checked;
+            SettingsManager.save();
+            updateSettingsButtonPosition();
+        });
+
+        positionSection.appendChild(createFormGroup(
+            createLabel('Show Settings Button:'),
+            uiElements.settingsButtonVisibilityToggle
+        ));
+
+        // Settings button horizontal offset input
+        uiElements.settingsButtonOffsetInput = createNumberInput('settingsButtonOffsetInput', 'Settings Button Horizontal Offset',
             settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset, (e) => {
             settings.settingsButtonOffset = parseInt(e.target.value);
             SettingsManager.save();
             updateSettingsButtonPosition();
         });
 
-        positionSection.appendChild(createFormGroup(createLabel('Settings Button Position:'), uiElements.settingsButtonOffsetInput));
+        positionSection.appendChild(createFormGroup(createLabel('Settings Button Horizontal Offset:'), uiElements.settingsButtonOffsetInput));
+
+        // Settings button vertical position select
+        uiElements.settingsButtonVerticalPositionSelect = document.createElement('select');
+        uiElements.settingsButtonVerticalPositionSelect.id = 'settingsButtonVerticalPositionSelect';
+        uiElements.settingsButtonVerticalPositionSelect.setAttribute('aria-label', 'Settings Button Vertical Position');
+
+        const settingsButtonVerticalPositions = [
+            { value: 'top', label: 'Top' },
+            { value: 'center', label: 'Center' },
+            { value: 'bottom', label: 'Bottom' }
+        ];
+
+        settingsButtonVerticalPositions.forEach(({ value, label }) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            option.selected = (settings.settingsButtonVerticalPosition ?? DEFAULT_SETTINGS.settingsButtonVerticalPosition) === value;
+            uiElements.settingsButtonVerticalPositionSelect.appendChild(option);
+        });
+
+        uiElements.settingsButtonVerticalPositionSelect.addEventListener('change', (e) => {
+            settings.settingsButtonVerticalPosition = e.target.value;
+            SettingsManager.save();
+            updateSettingsButtonPosition();
+            updateSettingsButtonControlState();
+        });
+
+        positionSection.appendChild(createFormGroup(
+            createLabel('Settings Button Vertical Position:'),
+            uiElements.settingsButtonVerticalPositionSelect
+        ));
+
+        // Settings button vertical offset input
+        uiElements.settingsButtonVerticalOffsetInput = createNumberInput(
+            'settingsButtonVerticalOffsetInput',
+            'Settings Button Vertical Offset',
+            settings.settingsButtonVerticalOffset ?? DEFAULT_SETTINGS.settingsButtonVerticalOffset,
+            (e) => {
+                settings.settingsButtonVerticalOffset = parseInt(e.target.value);
+                SettingsManager.save();
+                updateSettingsButtonPosition();
+            }
+        );
+
+        const settingsButtonVerticalOffsetGroup = createFormGroup(
+            createLabel('Settings Button Vertical Offset:'),
+            uiElements.settingsButtonVerticalOffsetInput
+        );
+        uiElements.settingsButtonVerticalOffsetGroup = settingsButtonVerticalOffsetGroup;
+
+        positionSection.appendChild(settingsButtonVerticalOffsetGroup);
+        updateSettingsButtonControlState();
 
         ui.appendChild(positionSection);
 
@@ -2712,8 +2785,48 @@
      */
     function updateSettingsButtonPosition() {
         const button = document.getElementById(ELEMENT_IDS.TOGGLE_UI_BUTTON);
-        if (button) {
-            button.style.right = `${settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset}px`;
+        if (!button) return;
+
+        const isVisible = settings.settingsButtonVisible ?? DEFAULT_SETTINGS.settingsButtonVisible;
+        const horizontalOffset = settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset;
+        const verticalPosition = settings.settingsButtonVerticalPosition ?? DEFAULT_SETTINGS.settingsButtonVerticalPosition;
+        const verticalOffset = settings.settingsButtonVerticalOffset ?? DEFAULT_SETTINGS.settingsButtonVerticalOffset;
+
+        button.style.display = isVisible ? 'flex' : 'none';
+        if (!isVisible) return;
+
+        button.style.right = `${horizontalOffset}px`;
+        button.style.top = '';
+        button.style.bottom = '';
+
+        let baseTransform = 'none';
+        let hoverTransform = 'scale(1.1)';
+
+        switch (verticalPosition) {
+            case 'top':
+                button.style.top = `${verticalOffset}px`;
+                break;
+            case 'bottom':
+                button.style.bottom = `${verticalOffset}px`;
+                break;
+            case 'center':
+            default:
+                button.style.top = '50%';
+                baseTransform = 'translateY(-50%)';
+                hoverTransform = 'translateY(-50%) scale(1.1)';
+                break;
+        }
+
+        button.style.setProperty('--toggle-ui-transform', baseTransform);
+        button.style.setProperty('--toggle-ui-hover-transform', hoverTransform);
+    }
+
+    function updateSettingsButtonControlState() {
+        if (!uiElements.settingsButtonVerticalOffsetInput) return;
+        const isCenter = (settings.settingsButtonVerticalPosition ?? DEFAULT_SETTINGS.settingsButtonVerticalPosition) === 'center';
+        uiElements.settingsButtonVerticalOffsetInput.disabled = isCenter;
+        if (uiElements.settingsButtonVerticalOffsetGroup) {
+            uiElements.settingsButtonVerticalOffsetGroup.classList.toggle('disabled', isCenter);
         }
     }
 
@@ -2758,6 +2871,16 @@
         if (uiElements.settingsButtonOffsetInput) {
             uiElements.settingsButtonOffsetInput.value = settings.settingsButtonOffset ?? DEFAULT_SETTINGS.settingsButtonOffset;
         }
+        if (uiElements.settingsButtonVisibilityToggle) {
+            uiElements.settingsButtonVisibilityToggle.checked = settings.settingsButtonVisible ?? DEFAULT_SETTINGS.settingsButtonVisible;
+        }
+        if (uiElements.settingsButtonVerticalPositionSelect) {
+            uiElements.settingsButtonVerticalPositionSelect.value = settings.settingsButtonVerticalPosition ?? DEFAULT_SETTINGS.settingsButtonVerticalPosition;
+        }
+        if (uiElements.settingsButtonVerticalOffsetInput) {
+            uiElements.settingsButtonVerticalOffsetInput.value = settings.settingsButtonVerticalOffset ?? DEFAULT_SETTINGS.settingsButtonVerticalOffset;
+        }
+        updateSettingsButtonControlState();
 
         // Update extreme mode values
         if (uiElements.extremeModeToggle && settings.extremeMode) {
@@ -2938,6 +3061,10 @@
                 margin-bottom: 12px;
                 display: flex;
                 flex-direction: column;
+            }
+
+            #${ELEMENT_IDS.UI} .form-group.disabled {
+                opacity: 0.6;
             }
 
             #${ELEMENT_IDS.UI} label {
@@ -3125,7 +3252,7 @@
                 position: fixed;
                 top: 50%;
                 right: ${settingsButtonOffset || DEFAULT_SETTINGS.settingsButtonOffset}px;
-                transform: translateY(-50%);
+                transform: var(--toggle-ui-transform, translateY(-50%));
                 background-color: rgba(240, 240, 240, 0.8);
                 border: 1px solid rgba(0, 0, 0, 0.1);
                 padding: 8px;
@@ -3143,7 +3270,7 @@
 
             #${ELEMENT_IDS.TOGGLE_UI_BUTTON}:hover {
                 background-color: rgba(240, 240, 240, 1);
-                transform: translateY(-50%) scale(1.1);
+                transform: var(--toggle-ui-hover-transform, translateY(-50%) scale(1.1));
             }
 
             #${ELEMENT_IDS.TOGGLE_UI_BUTTON} svg {
