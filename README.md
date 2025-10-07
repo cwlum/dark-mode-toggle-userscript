@@ -23,7 +23,7 @@ A powerful user script that adds a customizable dark mode toggle button to any w
 *   **Diagnostic System:** Troubleshoot issues with specific websites and generate diagnostic reports.
 *   **Easy Dark Mode Toggle:**  Quickly enable or disable dark mode with a single click.
 *   **Customizable UI:**  Adjust the position, colors, font, and other UI elements to match your preferences.
-*   **Floating Settings Overlay:** Modern panel with ambient blur, keyboard/overlay dismissal, and a dedicated close control.
+*   **Floating Settings Overlay:** Modern, draggable panel with ambient blur, keyboard/overlay dismissal, and a dedicated close control.
 *   **DarkReader Integration:**  Leverages DarkReader for advanced dark mode conversion, providing excellent results on most websites.
 *   **Site Exclusion:**  Exclude specific websites where you don't want dark mode to be applied, with support for wildcards.
 *   **Scheduled Dark Mode:** Set up automatic switching between light and dark modes based on specific times.
@@ -46,6 +46,7 @@ After installation, a dark mode toggle button will appear on every website you v
 *   **Click the button** to toggle dark mode on or off.
 *   **Press Alt+Shift+D** (default shortcut) to toggle dark mode from anywhere on the page.
 *   **Click the gear icon** on the right side of the screen to open the settings panel.
+*   **Drag the header** to pin the panel anywhere; double-click to snap it back to the default docked position.
 *   **Close the panel** with the corner button, by pressing Esc, or by clicking the dimmed backdrop.
 *   **In the settings panel,** you can:
     *   Change the button's position (top-left, top-right, bottom-left, bottom-right).
@@ -147,10 +148,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **v3.3.0**
 
-* **Settings Overlay Refresh:** Added a modern floating panel with soft backdrop, sticky header, and accessible close controls (Esc, overlay click, or button).
+* **Settings Overlay Refresh:** Added a modern floating panel with soft backdrop, sticky header, draggable header, and accessible close controls (Esc, overlay click, or button).
 * **Gear Button Controls:** New visibility toggle plus top/center/bottom anchoring with independent offsets for the settings gear.
 * **Improved Interaction Flow:** Settings dialog now traps focus on open and restores the page state when dismissed.
-* **UI Styling Pass:** Updated form inputs, buttons, and action controls for a cleaner, consistent appearance across light and dark themes.
+* **UI Styling Pass:** Updated form inputs, buttons, and action controls for a cleaner, consistent appearance across light and dark themes while reducing inline overrides on media elements.
 * **Reliability Fixes:** Resolved missing global `toggleDarkMode` reference and removed stale UIManager call for smoother toggling.
 
 **v3.1.0**

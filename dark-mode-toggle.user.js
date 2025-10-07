@@ -386,6 +386,11 @@
         settingsButtonVisible: true,
         settingsButtonVerticalPosition: 'center',
         settingsButtonVerticalOffset: 40,
+        uiPosition: {
+            mode: "docked",
+            top: null,
+            left: null
+        },
         scheduledDarkMode: {
             enabled: false,
             startTime: '20:00',
@@ -1031,6 +1036,7 @@
      */
     function applyExtremeDarkToElement(element) {
         if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
+        if (EXTREME_MODE_SKIP_TAGS.has(element.tagName)) return;
 
         try {
             // Store original styles
@@ -1113,6 +1119,7 @@
      */
     function deepScanElements(elements) {
         for (const element of elements) {
+            if (EXTREME_MODE_SKIP_TAGS.has(element.tagName)) continue;
             try {
                 const computedStyle = window.getComputedStyle(element);
                 const backgroundColor = computedStyle.backgroundColor;
@@ -1373,6 +1380,7 @@
             } catch (error) {
                 Utils.log('error', 'Failed to load global settings', error);
                 settings = { ...DEFAULT_SETTINGS };
+                settings.uiPosition = { ...DEFAULT_SETTINGS.uiPosition };
             }
         },
 
@@ -1436,6 +1444,7 @@
 
                 // Call update functions after saving
                 updateButtonPosition();
+                applySettingsPanelPosition();
                 DarkModeManager.updateDarkReaderConfig();
                 updateExclusionListDisplay();
                 setupScheduleChecking();
@@ -1827,7 +1836,15 @@
      * Create the dark mode toggle button
      */
     function createToggleButton() {
-        if (document.getElementById(ELEMENT_IDS.BUTTON)) return;
+        const existingButtons = document.querySelectorAll(`#${ELEMENT_IDS.BUTTON}`);
+        if (existingButtons.length > 0) {
+            const [primary, ...duplicates] = existingButtons;
+            if (!document.body.contains(primary)) {
+                document.body.appendChild(primary);
+            }
+            duplicates.forEach(btn => btn.remove());
+            return;
+        }
 
         const button = document.createElement('button');
         button.id = ELEMENT_IDS.BUTTON;
@@ -1943,6 +1960,7 @@
         header.appendChild(uiElements.closeSettingsButton);
 
         ui.appendChild(header);
+        enableSettingsPanelDrag(ui, header);
 
         // Per-site settings section
         const perSiteSection = createSettingSection('Site-Specific Settings');
@@ -2915,6 +2933,126 @@
         }
     }
 
+    function applySettingsPanelPosition() {
+        const ui = document.getElementById(ELEMENT_IDS.UI);
+        if (!ui) return;
+
+        const position = settings.uiPosition ?? DEFAULT_SETTINGS.uiPosition;
+        if (position.mode === 'custom' && typeof position.top === 'number' && typeof position.left === 'number') {
+            const maxLeft = Math.max(8, window.innerWidth - ui.offsetWidth - 8);
+            const maxTop = Math.max(8, window.innerHeight - ui.offsetHeight - 8);
+            const clampedLeft = Math.min(Math.max(position.left, 8), maxLeft);
+            const clampedTop = Math.min(Math.max(position.top, 8), maxTop);
+            ui.style.left = `${clampedLeft}px`;
+            ui.style.top = `${clampedTop}px`;
+            ui.style.right = 'auto';
+            ui.style.transform = 'translate(0, 0)';
+            ui.classList.add('custom-position');
+        } else {
+            ui.style.left = '';
+            ui.style.top = '50%';
+            ui.style.right = 'clamp(16px, 4vw, 64px)';
+            ui.style.transform = 'translateY(-50%)';
+            ui.classList.remove('custom-position');
+        }
+    }
+
+    function resetSettingsPanelPosition() {
+        settings.uiPosition = { ...DEFAULT_SETTINGS.uiPosition };
+        applySettingsPanelPosition();
+        SettingsManager.save();
+    }
+
+    function enableSettingsPanelDrag(ui, handle) {
+        if (!handle) return;
+
+        let pointerId = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        const onPointerMove = (event) => {
+            if (pointerId === null || event.pointerId !== pointerId) return;
+            event.preventDefault();
+            const bounds = ui.getBoundingClientRect();
+            const newLeft = event.clientX - dragOffset.x;
+            const newTop = event.clientY - dragOffset.y;
+
+            const minLeft = 8;
+            const minTop = 8;
+            const maxLeft = Math.max(minLeft, window.innerWidth - bounds.width - 8);
+            const maxTop = Math.max(minTop, window.innerHeight - bounds.height - 8);
+
+            const clampedLeft = Math.min(Math.max(newLeft, minLeft), maxLeft);
+            const clampedTop = Math.min(Math.max(newTop, minTop), maxTop);
+
+            ui.style.left = `${clampedLeft}px`;
+            ui.style.top = `${clampedTop}px`;
+            ui.style.right = 'auto';
+            ui.style.transform = 'translate(0, 0)';
+            ui.classList.add('custom-position');
+
+            settings.uiPosition = {
+                mode: 'custom',
+                left: clampedLeft,
+                top: clampedTop
+            };
+        };
+
+        const onPointerUp = (event) => {
+            if (pointerId === null || event.pointerId !== pointerId) return;
+            if (handle.releasePointerCapture) {
+                try {
+                    handle.releasePointerCapture(pointerId);
+                } catch (error) {
+                    // Ignore unsupported pointer capture release
+                }
+            }
+            pointerId = null;
+            ui.classList.remove('dragging');
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+            SettingsManager.save();
+        };
+
+        const onPointerDown = (event) => {
+            if (event.button !== undefined && event.button !== 0) return;
+            if (event.target.closest('button')) return;
+            pointerId = event.pointerId ?? 0;
+            if (handle.setPointerCapture) {
+                try {
+                    handle.setPointerCapture(pointerId);
+                } catch (error) {
+                    // Ignore unsupported pointer capture
+                }
+            }
+            const bounds = ui.getBoundingClientRect();
+            dragOffset = {
+                x: event.clientX - bounds.left,
+                y: event.clientY - bounds.top
+            };
+            ui.classList.add('dragging');
+            window.addEventListener('pointermove', onPointerMove, { passive: false });
+            window.addEventListener('pointerup', onPointerUp, { passive: true });
+            if ((settings.uiPosition?.mode ?? DEFAULT_SETTINGS.uiPosition.mode) !== 'custom') {
+                settings.uiPosition = {
+                    mode: 'custom',
+                    left: bounds.left,
+                    top: bounds.top
+                };
+            }
+        };
+
+        const onDoubleClick = () => {
+            resetSettingsPanelPosition();
+        };
+
+        handle.addEventListener('pointerdown', onPointerDown);
+        handle.addEventListener('dblclick', onDoubleClick);
+    }
+
+    function handleViewportResize() {
+        applySettingsPanelPosition();
+    }
+
     /**
      * Update UI element values based on current settings
      */
@@ -2992,6 +3130,7 @@
             ui.style.color = settings.textColor;
             ui.style.fontFamily = settings.fontFamily;
         }
+        applySettingsPanelPosition();
 
         // If previous styles exist, remove them
         document.getElementById('darkModeToggleStyle')?.remove();
@@ -3149,6 +3288,23 @@
                 font-size: 18px;
                 font-weight: 600;
                 letter-spacing: 0.25px;
+            }
+
+            #${ELEMENT_IDS.UI} .settings-header {
+                cursor: grab;
+                user-select: none;
+            }
+
+            #${ELEMENT_IDS.UI}.dragging .settings-header {
+                cursor: grabbing;
+            }
+
+            #${ELEMENT_IDS.UI}.dragging {
+                transition: none !important;
+            }
+
+            #${ELEMENT_IDS.UI}.custom-position {
+                max-width: 92vw;
             }
 
             #${ELEMENT_IDS.UI} .settings-close {
@@ -3513,6 +3669,7 @@
         createUI();
         createToggleUIButton();
         document.addEventListener('keydown', handleSettingsKeydown, { passive: true });
+        window.addEventListener('resize', handleViewportResize, { passive: true });
 
         // Update UI state
         updateUIValues();
