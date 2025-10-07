@@ -3,7 +3,7 @@
 // @author       Cervantes Wu (http://www.mriwu.us)
 // @description  Ultra enhanced dark mode toggle with per-site settings, performance optimization, and device adaptation
 // @namespace    https://github.com/cwlum/dark-mode-toggle-userscript
-// @version      3.2.0
+// @version      3.3.0
 // @match        *://*/*
 // @exclude      devtools://*
 // @grant        GM.getValue
@@ -197,7 +197,9 @@
         FORCE_DARK_TOGGLE: 'forceDarkToggle',
         SHOW_DIAGNOSTICS_BUTTON: 'showDiagnosticsButton',
         PER_SITE_SETTINGS_TOGGLE: 'perSiteSettingsToggle', // New element for per-site settings toggle
-        USE_GLOBAL_POSITION_TOGGLE: 'useGlobalPositionToggle' // New element for global position toggle
+        USE_GLOBAL_POSITION_TOGGLE: 'useGlobalPositionToggle', // New element for global position toggle
+        SETTINGS_OVERLAY: 'darkModeToggleOverlay',
+        CLOSE_SETTINGS_BUTTON: 'closeDarkModeSettingsButton'
     };
 
     const STORAGE_KEYS = {
@@ -1497,6 +1499,11 @@
                 updateButtonPosition();
                 DarkModeManager.updateDarkReaderConfig();
                 updateUIValues();
+            try {
+                ui.focus({ preventScroll: true });
+            } catch (error) {
+                ui.focus();
+            }
                 updateButtonState();
                 updateExclusionListDisplay();
                 toggleDarkMode(false);
@@ -1898,9 +1905,44 @@
     function createUI() {
         if (document.getElementById(ELEMENT_IDS.UI)) return;
 
+        let overlay = document.getElementById(ELEMENT_IDS.SETTINGS_OVERLAY);
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = ELEMENT_IDS.SETTINGS_OVERLAY;
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.addEventListener('click', () => toggleUI(false), { passive: true });
+            document.body.appendChild(overlay);
+        }
+        uiElements.settingsOverlay = overlay;
+
         const ui = document.createElement('div');
         ui.id = ELEMENT_IDS.UI;
+        ui.setAttribute('role', 'dialog');
+        ui.setAttribute('aria-modal', 'true');
         ui.setAttribute('aria-label', 'Dark Mode Settings');
+        ui.setAttribute('aria-hidden', 'true');
+        ui.setAttribute('tabindex', '-1');
+
+        const header = document.createElement('div');
+        header.className = 'settings-header';
+
+        const title = document.createElement('h2');
+        title.className = 'settings-title';
+        title.textContent = 'Dark Mode Settings';
+        header.appendChild(title);
+
+        uiElements.closeSettingsButton = Utils.createButton(
+            ELEMENT_IDS.CLOSE_SETTINGS_BUTTON,
+            '×',
+            () => toggleUI(false)
+        );
+        uiElements.closeSettingsButton.classList.add('settings-close');
+        uiElements.closeSettingsButton.setAttribute('aria-label', 'Close Settings Panel');
+        uiElements.closeSettingsButton.setAttribute('type', 'button');
+        uiElements.closeSettingsButton.setAttribute('title', 'Close Settings');
+        header.appendChild(uiElements.closeSettingsButton);
+
+        ui.appendChild(header);
 
         // Per-site settings section
         const perSiteSection = createSettingSection('Site-Specific Settings');
@@ -2616,7 +2658,7 @@
         // Version info
         const versionInfo = document.createElement('div');
         versionInfo.className = 'version-info';
-        versionInfo.textContent = 'Enhanced Dark Mode Toggle v3.1.0';
+        versionInfo.textContent = 'Enhanced Dark Mode Toggle v3.3.0';
         ui.appendChild(versionInfo);
 
         document.body.appendChild(ui);
@@ -2833,17 +2875,43 @@
     /**
      * Toggle the visibility of the settings UI
      */
-    function toggleUI() {
-        const ui = document.getElementById(ELEMENT_IDS.UI);
-        uiVisible = !uiVisible;
+    function toggleUI(forceState) {
+        if (forceState && typeof forceState === 'object' && 'type' in forceState) {
+            forceState = undefined;
+        }
 
-        if (uiVisible) {
+        const ui = document.getElementById(ELEMENT_IDS.UI);
+        const overlay = document.getElementById(ELEMENT_IDS.SETTINGS_OVERLAY);
+        if (!ui) return;
+
+        const shouldShow = typeof forceState === 'boolean' ? forceState : !uiVisible;
+        uiVisible = shouldShow;
+
+        if (shouldShow) {
             ui.classList.add('visible');
             ui.setAttribute('aria-hidden', 'false');
+            overlay?.classList.add('visible');
+            overlay?.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('dark-mode-settings-open');
             updateUIValues();
+            try {
+                ui.focus({ preventScroll: true });
+            } catch (error) {
+                ui.focus();
+            }
         } else {
             ui.classList.remove('visible');
             ui.setAttribute('aria-hidden', 'true');
+            overlay?.classList.remove('visible');
+            overlay?.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('dark-mode-settings-open');
+            ui.blur();
+        }
+    }
+
+    function handleSettingsKeydown(event) {
+        if (event.key === 'Escape' && uiVisible) {
+            toggleUI(false);
         }
     }
 
@@ -2949,6 +3017,27 @@
         } = settings;
 
         return `
+            /* Settings overlay */
+            #${ELEMENT_IDS.SETTINGS_OVERLAY} {
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 18, 30, 0.45);
+                backdrop-filter: blur(4px);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+                z-index: 2147483643;
+            }
+
+            #${ELEMENT_IDS.SETTINGS_OVERLAY}.visible {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            body.dark-mode-settings-open {
+                overflow: hidden;
+            }
+
             /* Toggle button styles */
             #${ELEMENT_IDS.BUTTON} {
                 width: ${buttonSize.width}px;
@@ -2967,7 +3056,7 @@
                 position: fixed;
                 outline: none;
                 /* Enhanced z-index to ensure visibility */
-                z-index: 2147483646;
+                z-index: 2147483647;
             }
 
             #${ELEMENT_IDS.BUTTON}:hover {
@@ -3013,54 +3102,98 @@
             /* Settings UI Styles */
             #${ELEMENT_IDS.UI} {
                 position: fixed;
-                top: 20px;
-                left: 20px;
+                top: 50%;
+                right: clamp(16px, 4vw, 64px);
+                transform: translateY(-50%) scale(0.96);
+                opacity: 0;
+                pointer-events: none;
                 background-color: ${themeColor};
-                border: 1px solid rgba(0, 0, 0, 0.1);
-                padding: 15px;
-                padding-top: 0;
-                z-index: 2147483647; /* Maximum z-index to ensure visibility */
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                display: none;
                 color: ${textColor};
-                font-family: ${settings.fontFamily};
-                max-width: 90vw;
+                border-radius: 16px;
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                box-shadow: 0 24px 48px rgba(5, 8, 20, 0.25);
+                width: min(380px, 92vw);
                 max-height: 80vh;
-                overflow: auto;
-                width: 320px; /* Increased width for new settings */
+                overflow-y: auto;
+                padding: 24px 24px 28px;
+                font-family: ${settings.fontFamily};
+                transition: opacity 0.25s ease, transform 0.25s ease;
+                z-index: 2147483647;
             }
 
             #${ELEMENT_IDS.UI}.visible {
-                display: block;
-                animation: fadeIn 0.2s ease;
+                opacity: 1;
+                transform: translateY(-50%) scale(1);
+                pointer-events: auto;
             }
 
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(-10px); }
-                to { opacity: 1; transform: translateY(0); }
+            #${ELEMENT_IDS.UI} .settings-header {
+                position: sticky;
+                top: -24px;
+                margin: -24px -24px 16px;
+                padding: 20px 24px 16px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                background-color: ${themeColor};
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.88) 100%);
+                border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 16px 16px 0 0;
+                backdrop-filter: blur(6px);
+                color: ${textColor};
+            }
+
+            #${ELEMENT_IDS.UI} .settings-title {
+                margin: 0;
+                font-size: 18px;
+                font-weight: 600;
+                letter-spacing: 0.25px;
+            }
+
+            #${ELEMENT_IDS.UI} .settings-close {
+                background: rgba(0, 0, 0, 0.05);
+                border: none;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+                line-height: 1;
+                color: ${textColor};
+                cursor: pointer;
+                transition: background-color 0.2s ease, transform 0.2s ease;
+                padding: 0;
+                margin: 0;
+            }
+
+            #${ELEMENT_IDS.UI} .settings-close:hover {
+                background: rgba(0, 0, 0, 0.1);
+                transform: scale(1.05);
             }
 
             #${ELEMENT_IDS.UI} h3 {
-                margin-top: 15px;
-                margin-bottom: 10px;
-                font-size: 14px;
+                margin-top: 24px;
+                margin-bottom: 12px;
+                font-size: 13px;
                 font-weight: 600;
                 color: ${textColor};
-                border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-                padding-bottom: 5px;
+                opacity: 0.8;
+                letter-spacing: 0.4px;
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
             }
 
             #${ELEMENT_IDS.UI} .settings-section {
-                margin-bottom: 15px;
+                margin-bottom: 20px;
             }
 
             #${ELEMENT_IDS.UI} .form-group {
-                margin-bottom: 12px;
+                margin-bottom: 16px;
                 display: flex;
                 flex-direction: column;
+                gap: 6px;
             }
 
             #${ELEMENT_IDS.UI} .form-group.disabled {
@@ -3069,9 +3202,10 @@
 
             #${ELEMENT_IDS.UI} label {
                 display: block;
-                margin-bottom: 5px;
                 font-weight: 500;
                 font-size: 13px;
+                color: ${textColor};
+                opacity: 0.7;
             }
 
             #${ELEMENT_IDS.UI} select,
@@ -3079,13 +3213,26 @@
             #${ELEMENT_IDS.UI} input[type="color"],
             #${ELEMENT_IDS.UI} input[type="text"],
             #${ELEMENT_IDS.UI} input[type="time"] {
-                padding: 8px;
-                border: 1px solid rgba(0, 0, 0, 0.2);
-                border-radius: 4px;
-                color: #333;
+                padding: 9px 12px;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 10px;
+                color: ${textColor};
                 width: 100%;
                 box-sizing: border-box;
                 font-size: 13px;
+                background-color: rgba(255, 255, 255, 0.92);
+                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            }
+
+            #${ELEMENT_IDS.UI} select:focus,
+            #${ELEMENT_IDS.UI} input[type="number"]:focus,
+            #${ELEMENT_IDS.UI} input[type="color"]:focus,
+            #${ELEMENT_IDS.UI} input[type="text"]:focus,
+            #${ELEMENT_IDS.UI} input[type="time"]:focus,
+            #${ELEMENT_IDS.UI} textarea:focus {
+                outline: none;
+                border-color: rgba(63, 123, 255, 0.6);
+                box-shadow: 0 0 0 3px rgba(63, 123, 255, 0.12);
             }
 
             #${ELEMENT_IDS.UI} input[type="range"] {
@@ -3093,15 +3240,17 @@
             }
 
             #${ELEMENT_IDS.UI} textarea {
-                padding: 8px;
-                border: 1px solid rgba(0, 0, 0, 0.2);
-                border-radius: 4px;
-                color: #333;
+                padding: 9px 12px;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 12px;
+                color: ${textColor};
                 width: 100%;
                 box-sizing: border-box;
                 font-size: 13px;
                 font-family: monospace;
                 resize: vertical;
+                background-color: rgba(255, 255, 255, 0.92);
+                transition: border-color 0.2s ease, box-shadow 0.2s ease;
             }
 
             #${ELEMENT_IDS.UI} .value-display {
@@ -3167,20 +3316,23 @@
             }
 
             #${ELEMENT_IDS.UI} button {
-                background-color: #f0f0f0;
-                color: #333;
-                padding: 6px 10px;
-                border: 1px solid rgba(0, 0, 0, 0.2);
-                border-radius: 4px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 240, 240, 0.95) 100%);
+                color: ${textColor};
+                padding: 8px 12px;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 10px;
                 cursor: pointer;
                 font-size: 12px;
-                transition: background-color 0.2s;
-                margin-right: 5px;
-                margin-bottom: 5px;
+                font-weight: 500;
+                transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+                margin-right: 6px;
+                margin-bottom: 8px;
             }
 
             #${ELEMENT_IDS.UI} button:hover {
-                background-color: #e0e0e0;
+                background-color: rgba(240, 240, 240, 1);
+                box-shadow: 0 10px 18px rgba(15, 18, 30, 0.12);
+                transform: translateY(-1px);
             }
 
             #${ELEMENT_IDS.UI} .remove-button {
@@ -3199,44 +3351,45 @@
 
             /* Reset Settings Button Styles */
             #${ELEMENT_IDS.RESET_SETTINGS_BUTTON} {
-                background-color: #ff5252;
-                color: white;
-                padding: 8px 12px;
+                background: linear-gradient(180deg, #ff6b6b 0%, #f03535 100%);
+                color: #fff;
                 border: none;
                 width: 100%;
-                margin-top: 10px;
+                margin-top: 12px;
+                box-shadow: 0 12px 24px rgba(240, 53, 53, 0.25);
             }
 
             #${ELEMENT_IDS.RESET_SETTINGS_BUTTON}:hover {
-                background-color: #ff1a1a;
+                transform: translateY(-1px);
+                box-shadow: 0 16px 32px rgba(240, 53, 53, 0.35);
             }
 
             #${ELEMENT_IDS.EXPORT_SETTINGS_BUTTON},
             #${ELEMENT_IDS.IMPORT_SETTINGS_BUTTON} {
-                background-color: #4CAF50;
-                color: white;
-                padding: 8px 12px;
+                background: linear-gradient(180deg, #51d1a6 0%, #2f9d76 100%);
+                color: #fff;
                 border: none;
-                width: calc(50% - 5px);
-                margin-top: 5px;
+                width: calc(50% - 6px);
+                margin-top: 8px;
             }
 
             #${ELEMENT_IDS.EXPORT_SETTINGS_BUTTON}:hover,
             #${ELEMENT_IDS.IMPORT_SETTINGS_BUTTON}:hover {
-                background-color: #45a049;
+                transform: translateY(-1px);
+                box-shadow: 0 12px 22px rgba(47, 157, 118, 0.25);
             }
 
             #${ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON} {
-                background-color: #2196F3;
-                color: white;
-                padding: 8px 12px;
+                background: linear-gradient(180deg, #5fa8ff 0%, #2f6bff 100%);
+                color: #fff;
                 border: none;
                 width: 100%;
-                margin-top: 5px;
+                margin-top: 8px;
             }
 
             #${ELEMENT_IDS.SHOW_DIAGNOSTICS_BUTTON}:hover {
-                background-color: #0b7dda;
+                transform: translateY(-1px);
+                box-shadow: 0 12px 22px rgba(47, 107, 255, 0.25);
             }
 
             .schedule-info, .info-text {
@@ -3359,6 +3512,7 @@
         createToggleButton();
         createUI();
         createToggleUIButton();
+        document.addEventListener('keydown', handleSettingsKeydown, { passive: true });
 
         // Update UI state
         updateUIValues();
@@ -3404,7 +3558,7 @@
                 createUI();
                 updateUIValues();
                 applyUIStyles();
-                toggleUI(); // This will set it to visible
+                toggleUI(true); // Ensure UI is visible after recreation
             }
             if (darkModeEnabled && extremeModeActive) {
                 findShadowRoots();

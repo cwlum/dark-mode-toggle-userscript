@@ -1,8 +1,8 @@
 # Enhanced Dark Mode Toggle User Script
 
-![Version](https://img.shields.io/badge/version-3.1.0-orange)
+![Version](https://img.shields.io/badge/version-3.3.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
-![Last Updated](https://img.shields.io/badge/last%20updated-2025--04--23-informational)
+![Last Updated](https://img.shields.io/badge/last%20updated-2025--10--07-informational)
 
 A powerful user script that adds a customizable dark mode toggle button to any website, with enhanced compatibility and advanced features to work on even the most resistant sites.
 
@@ -19,9 +19,11 @@ A powerful user script that adds a customizable dark mode toggle button to any w
 *   **Reduced Motion Options:** Accessibility settings to reduce animations for users who prefer less motion.
 *   **Low Power Mode:** Battery-aware features that reduce resource usage when battery is low.
 *   **Per-Site Position Settings:** Remember button position separately for each website.
+*   **Configurable Settings Gear:** Hide the gear entirely or pin it to the top, center, or bottom with custom offsets.
 *   **Diagnostic System:** Troubleshoot issues with specific websites and generate diagnostic reports.
 *   **Easy Dark Mode Toggle:**  Quickly enable or disable dark mode with a single click.
 *   **Customizable UI:**  Adjust the position, colors, font, and other UI elements to match your preferences.
+*   **Floating Settings Overlay:** Modern panel with ambient blur, keyboard/overlay dismissal, and a dedicated close control.
 *   **DarkReader Integration:**  Leverages DarkReader for advanced dark mode conversion, providing excellent results on most websites.
 *   **Site Exclusion:**  Exclude specific websites where you don't want dark mode to be applied, with support for wildcards.
 *   **Scheduled Dark Mode:** Set up automatic switching between light and dark modes based on specific times.
@@ -44,6 +46,7 @@ After installation, a dark mode toggle button will appear on every website you v
 *   **Click the button** to toggle dark mode on or off.
 *   **Press Alt+Shift+D** (default shortcut) to toggle dark mode from anywhere on the page.
 *   **Click the gear icon** on the right side of the screen to open the settings panel.
+*   **Close the panel** with the corner button, by pressing Esc, or by clicking the dimmed backdrop.
 *   **In the settings panel,** you can:
     *   Change the button's position (top-left, top-right, bottom-left, bottom-right).
     *   Adjust the button's offset from the edge of the screen.
@@ -73,7 +76,8 @@ The following configuration options are available in the settings panel:
 ### Button Position
 *   **Position:** The position of the toggle button on the screen.
 *   **Offset X/Y:** The horizontal/vertical offset of the toggle button from the edge of the screen (in pixels).
-*   **Settings Button Offset:** Adjust the position of the settings button on the screen.
+*   **Settings Button Visibility & Offset:** Show or hide the gear icon and adjust its horizontal offset.
+*   **Settings Button Anchor:** Pin the gear to the top, center, or bottom edge with a custom vertical offset.
 
 ### Device Optimization
 *   **Enable Device Optimization:** Automatically adjust performance based on device capabilities.
@@ -140,6 +144,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <summary><strong>Changelog</strong> (Click to expand)</summary>
 ---
    
+
+**v3.3.0**
+
+* **Settings Overlay Refresh:** Added a modern floating panel with soft backdrop, sticky header, and accessible close controls (Esc, overlay click, or button).
+* **Gear Button Controls:** New visibility toggle plus top/center/bottom anchoring with independent offsets for the settings gear.
+* **Improved Interaction Flow:** Settings dialog now traps focus on open and restores the page state when dismissed.
+* **UI Styling Pass:** Updated form inputs, buttons, and action controls for a cleaner, consistent appearance across light and dark themes.
+* **Reliability Fixes:** Resolved missing global `toggleDarkMode` reference and removed stale UIManager call for smoother toggling.
 
 **v3.1.0**
 
